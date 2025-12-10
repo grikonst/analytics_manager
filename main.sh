@@ -66,7 +66,7 @@ ACCOUNT_ID="$DEFAULT_ACCOUNT_ID"
 API_URL="$DEFAULT_API_URL"
 HOST_IP="$DEFAULT_HOST_IP"
 
-# Анализ камер - настройки по умолчанию
+# Диагностика - настройки по умолчанию
 ANALYSIS_TIMEOUT=15
 DEFAULT_CAMERAS_FILE="$CAMS_LIST_DIR/cams.list"
 
@@ -570,7 +570,7 @@ get_agent_releases() {
         return 1
     fi
     
-    # Создание архивов Docker образов
+    # ПОЛУЧЕНИЕ архивов Docker образов
     local timestamp
     timestamp=$(date +%Y%m%d_%H%M%S)
     local releases_subdir="$RELEASES_DIR/$timestamp"
@@ -579,7 +579,7 @@ get_agent_releases() {
     local current=0
     local total_archives=4
     
-    show_message "Создание архивов" "Создание архивов Docker образов...\n\nВсего архивов: $total_archives\n\nДиректория: $releases_subdir"
+    show_message "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архивов Docker образов...\n\nВсего архивов: $total_archives\n\nДиректория: $releases_subdir"
     
     # 1. Scanner основной образ
     ((current++))
@@ -587,9 +587,9 @@ get_agent_releases() {
     local scanner_archive="$releases_subdir/$scanner_tag.tar"
     
     if [[ -n "$TUI_CMD" ]]; then
-        show_progress_with_percent "Создание архивов" "Создание архива: $scanner_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
+        show_progress_with_percent "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архива: $scanner_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
     else
-        echo "Создание архива: $scanner_tag.tar ($current/$total_archives)"
+        echo "ПОЛУЧЕНИЕ архива: $scanner_tag.tar ($current/$total_archives)"
     fi
     
     if docker save -o "$scanner_archive" "$scanner_image" 2>&1; then
@@ -607,9 +607,9 @@ get_agent_releases() {
     local scanner_configs_archive="$releases_subdir/configs-$scanner_tag.tar"
     
     if [[ -n "$TUI_CMD" ]]; then
-        show_progress_with_percent "Создание архивов" "Создание архива: configs-$scanner_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
+        show_progress_with_percent "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архива: configs-$scanner_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
     else
-        echo "Создание архива: configs-$scanner_tag.tar ($current/$total_archives)"
+        echo "ПОЛУЧЕНИЕ архива: configs-$scanner_tag.tar ($current/$total_archives)"
     fi
     
     if docker save -o "$scanner_configs_archive" "$scanner_configs_image" 2>&1; then
@@ -627,9 +627,9 @@ get_agent_releases() {
     local bags_archive="$releases_subdir/$bags_tag.tar"
     
     if [[ -n "$TUI_CMD" ]]; then
-        show_progress_with_percent "Создание архивов" "Создание архива: $bags_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
+        show_progress_with_percent "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архива: $bags_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
     else
-        echo "Создание архива: $bags_tag.tar ($current/$total_archives)"
+        echo "ПОЛУЧЕНИЕ архива: $bags_tag.tar ($current/$total_archives)"
     fi
     
     if docker save -o "$bags_archive" "$bags_image" 2>&1; then
@@ -647,9 +647,9 @@ get_agent_releases() {
     local bags_configs_archive="$releases_subdir/configs-$bags_tag.tar"
     
     if [[ -n "$TUI_CMD" ]]; then
-        show_progress_with_percent "Создание архивов" "Создание архива: configs-$bags_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
+        show_progress_with_percent "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архива: configs-$bags_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
     else
-        echo "Создание архива: configs-$bags_tag.tar ($current/$total_archives)"
+        echo "ПОЛУЧЕНИЕ архива: configs-$bags_tag.tar ($current/$total_archives)"
     fi
     
     if docker save -o "$bags_configs_archive" "$bags_configs_image" 2>&1; then
@@ -661,8 +661,8 @@ get_agent_releases() {
         rm -f "$bags_configs_archive" 2>/dev/null
     fi
     
-    # Создание общего сжатого архива
-    show_message "Сжатие архивов" "Создание общего сжатого архива...\n\nЭто может занять некоторое время в зависимости от размера образов."
+    # ПОЛУЧЕНИЕ общего сжатого архива
+    show_message "Сжатие архивов" "ПОЛУЧЕНИЕ общего сжатого архива...\n\nЭто может занять некоторое время в зависимости от размера образов."
     
     local final_archive="$RELEASES_DIR/agents_releases_$timestamp.tar.zst"
     
@@ -2301,7 +2301,7 @@ add_streams_from_file() {
     done < "$file_path"
     
     if [[ $total_count -eq 0 ]]; then
-        show_message "Ошибка" "В файле не найдено валидных записей камер"
+        show_message "Ошибка" "В файле не найдено валидных записей видеопотоков"
         return 1
     fi
     
@@ -2718,7 +2718,7 @@ capture_frames() {
     echo "Количество недоступных камер: $failed_count" >> "$log_file"
     echo "Всего обработано камер: $total_count" >> "$log_file"
 
-    local result_message="Создание кадров завершено.\n\nУспешно: $success_count\nОшибок: $failed_count\nВсего: $total_count\n\nкадры сохранены в: $frames_subdir/\nЛог-файл: $log_file"
+    local result_message="Получение кадров завершено.\n\nУспешно: $success_count\nОшибок: $failed_count\nВсего: $total_count\n\nкадры сохранены в: $frames_subdir/\nЛог-файл: $log_file"
     
     show_message "Результат" "$result_message"
     echo "Сохранение кадров завершено: успешно $success_count, ошибок $failed_count"
@@ -2746,9 +2746,9 @@ analyze_cameras_simple() {
         fi
     fi
     
-    echo "Упрощенный отчет анализа видеопотоков" > "$report_file"
+    echo "Отчёт диагностики видеопотоков" > "$report_file"
     echo "Сгенерирован: $(date)" >> "$report_file"
-    echo "Файл камер: $cameras_file" >> "$report_file"
+    echo "Файл списка видеопотоков: $cameras_file" >> "$report_file"
     echo "===============================" >> "$report_file"
     echo "" >> "$report_file"
     
@@ -2824,7 +2824,7 @@ analyze_cameras_simple() {
     echo "==============================================================================" >> "$report_file"
     echo "" >> "$report_file"
     echo "СТАТИСТИКА:" >> "$report_file"
-    echo "Всего камер: $total_cameras" >> "$report_file"
+    echo "Всего видеопотоков: $total_cameras" >> "$report_file"
     echo "Онлайн: $online_cameras" >> "$report_file"
     echo "Оффлайн: $((total_cameras - online_cameras))" >> "$report_file"
 }
@@ -3422,7 +3422,7 @@ check_api_health() {
     fi
     
     
-    # Создание файла отчета
+    # ПОЛУЧЕНИЕ файла отчета
     local report_dir="$REPORT_DIR/api_health"
     mkdir -p "$report_dir"
     local report_file="$report_dir/api_health_$(date +%Y%m%d_%H%M).txt"
@@ -4145,7 +4145,7 @@ diagnostics_monitoring_menu() {
         local choice
         choice=$(show_menu "ДИАГНОСТИКА И МОНИТОРИНГ" "Диагностика потоков и технические отчёты\n\nАнализ • Мониторинг • Отчеты" \
             "1" "Диагностика видеопотоков камер" \
-            "2" "Создание кадров видеопотоков" \
+            "2" "ПОЛУЧЕНИЕ кадров видеопотоков" \
             "3" "Системный мониторинг" \
             "4" "Управление логами агентов" \
             "5" "Состояние системы" \
@@ -4169,9 +4169,9 @@ diagnostics_monitoring_menu() {
 recording_and_frames_menu() {
     while true; do
         local choice
-        choice=$(show_menu "СОЗДАНИЕ КАДРОВ ВИДЕОПОТОКОВ С КАМЕР" "Создание кадров с камер\n\nКадры • Одиночные • Пакетные" \
-            "1" "Создание кадров из файла" \
-            "2" "Создание кадра с одной камеры" \
+        choice=$(show_menu "ПОЛУЧЕНИЕ КАДРОВ ВИДЕОПОТОКОВ С КАМЕР" "ПОЛУЧЕНИЕ кадров с камер\n\nКадры • Одиночные • Пакетные" \
+            "1" "ПОЛУЧЕНИЕ кадров из файла" \
+            "2" "ПОЛУЧЕНИЕ кадра с одной камеры" \
             "0" "Назад")
         
         case "$choice" in
@@ -4480,12 +4480,12 @@ logs_management_menu() {
 
 capture_frames_screen() {
     local input_file
-    input_file=$(show_input "СОЗДАНИЕ КАДРОВ" "Введите путь к файлу с камерами:" "$DEFAULT_CAMS_LIST")
+    input_file=$(show_input "ПОЛУЧЕНИЕ КАДРОВ" "Введите путь к файлу с камерами:" "$DEFAULT_CAMS_LIST")
     
     if [[ -n "$input_file" ]]; then
         local preview
         preview=$(head -10 "$input_file" 2>/dev/null || echo "Не удалось прочитать файл")
-        if show_yesno "ПОДТВЕРЖДЕНИЕ" "Файл: $input_file\n\nПервые 10 строк:\n$preview\n\nПродолжить создание кадров?"; then
+        if show_yesno "ПОДТВЕРЖДЕНИЕ" "Файл: $input_file\n\nПервые 10 строк:\n$preview\n\nПродолжить ПОЛУЧЕНИЕ кадров?"; then
             capture_frames "$input_file"
         fi
     else
@@ -4495,11 +4495,11 @@ capture_frames_screen() {
 
 capture_single_frame_screen() {
     local camera_name
-    camera_name=$(show_input "СОЗДАНИЕ СНИМКА" "Введите имя камеры:" "")
+    camera_name=$(show_input "ПОЛУЧЕНИЕ СНИМКА" "Введите имя камеры:" "")
     [[ -z "$camera_name" ]] && return
     
     local camera_url
-    camera_url=$(show_input "СОЗДАНИЕ СНИМКА" "Введите URL камеры:" "")
+    camera_url=$(show_input "ПОЛУЧЕНИЕ СНИМКА" "Введите URL камеры:" "")
     [[ -z "$camera_url" ]] && return
     
     local temp_file
