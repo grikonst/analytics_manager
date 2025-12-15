@@ -30,7 +30,7 @@ EOF
 chmod +x "$TEMP_DIR/analytics_manager/launch.sh"
 
 # Создаем бинарный файл
-makeself --gzip --nox11 --nomd5 --nocrc "$TEMP_DIR/analytics_manager" cyk "Analytics Manager $VER" ./launch.sh
+makeself --notemp --gzip --nox11 --nomd5 --nocrc "$TEMP_DIR/analytics_manager" cyk "Analytics Manager $VER" ./launch.sh
 
 # Очистка
 rm -rf "$TEMP_DIR"
