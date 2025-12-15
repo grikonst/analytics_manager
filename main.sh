@@ -5398,25 +5398,25 @@ system_settings_screen() {
 template_management_screen() {
     while true; do
         local analytics_status=""
-        [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Оружие: ВКЛ "
-        [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Драки: ВКЛ "
-        [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Пожар: ВКЛ "
-        [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Люди: ВКЛ "
-        [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Маски: ВКЛ "
-        [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Сумки: ВКЛ "
-        [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Руки: ВКЛ "
-        [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Лежачие: ВКЛ "
+        [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Оружие: + "
+        [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Драки: + "
+        [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Пожар: + "
+        [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Люди: + "
+        [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Маски: + "
+        [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Сумки: + "
+        [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Руки: + "
+        [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Лежачие: + "
         
         local choice
         choice=$(show_menu "ШАБЛОН КОНФИГУРАЦИИ АНАЛИТИКИ" "Текущие настройки аналитики:\n$analytics_status" \
-            "1" "Оружие: $([[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "2" "Драки: $([[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "3" "Пожар: $([[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "4" "Люди: $([[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "5" "Маски: $([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "6" "Сумки: $([[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "7" "Руки: $([[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "8" "Лежачие: $([[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
+            "1" "Оружие: $([[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && echo "+" || echo "-")" \
+            "2" "Драки: $([[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && echo "+" || echo "-")" \
+            "3" "Пожар: $([[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && echo "+" || echo "-")" \
+            "4" "Люди: $([[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && echo "+" || echo "-")" \
+            "5" "Маски: $([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "+" || echo "-")" \
+            "6" "Сумки: $([[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && echo "+" || echo "-")" \
+            "7" "Руки: $([[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && echo "+" || echo "-")" \
+            "8" "Лежачие: $([[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && echo "+" || echo "-")" \
             "9" "Обновить шаблон" \
             "10" "Сбросить настройки" \
             "0" "Назад")
