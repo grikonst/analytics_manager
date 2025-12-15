@@ -877,7 +877,7 @@ get_agent_releases() {
     local images_to_pull=(
         "$docker_registry/agent-scanner-configs:$scanner_tag"
         "$docker_registry/luna-agent-scanner:$scanner_tag"
-        "$docker_registry/agents-bags-configs:$bags_tag"
+        "$docker_registry/agent-bags-configs:$bags_tag"
         "$docker_registry/luna-agent-bags:$bags_tag"
     )
     
@@ -975,7 +975,7 @@ get_agent_releases() {
     
     # 4. Bags configs образ
     ((current++))
-    local bags_configs_image="$docker_registry/agents-bags-configs:$bags_tag"
+    local bags_configs_image="$docker_registry/agent-bags-configs:$bags_tag"
     local bags_configs_archive="$releases_subdir/configs-$bags_tag.tar"
     
     if [[ -n "$TUI_CMD" ]]; then
@@ -3977,7 +3977,7 @@ validate_camera_file() {
 run_bags_migration() {
     echo "Запуск миграции базы данных конфигурации для Bags"
     
-    local migrate_cmd="docker run -v /etc/localtime:/etc/localtime:ro --entrypoint=/bin/bash --rm --network=host $DOCKER_REGISTRY/agents-bags-configs:$BAGS_TAG -c \"python3 -m agent_bags_configs.migrate head --config_db_url postgres://luna:luna@${HOST_IP}:5432/luna_configurator\""
+    local migrate_cmd="docker run -v /etc/localtime:/etc/localtime:ro --entrypoint=/bin/bash --rm --network=host $DOCKER_REGISTRY/agent-bags-configs:$BAGS_TAG -c \"python3 -m agent_bags_configs.migrate head --config_db_url postgres://luna:luna@${HOST_IP}:5432/luna_configurator\""
     
     show_message "Миграция базы данных Bags" "Выполняется миграция базы данных конфигурации для Bags...\n\nЭто может занять несколько секунд."
     
