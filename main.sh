@@ -2039,8 +2039,10 @@ show_checklist() {
         echo -e "$prompt"
         echo "────────────────────────────────────────────────────────────"
         
+        local index=1
         for ((i=0; i<${#options[@]}; i+=3)); do
-            echo " [ ] ${options[i+1]} (${options[i]})"
+            echo " $index) ${options[i+1]} (${options[i]})"
+            ((index++))
         done
         echo ""
         echo -n " 📍 Введите номера выбранных пунктов (через пробел): "
@@ -2099,41 +2101,176 @@ show_radiolist() {
     echo "$choice"
 }
 
+# ============================================================================
+# ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ПОТОКАМИ
+# ============================================================================
+
+get_streams_list() {
+    local force_refresh="$1"
+    local response
+    
+    # Если требуется обновить кэш или кэш устарел
+    local current_time=$(date +%s)
+    local cache_age=$((current_time - STREAM_CACHE_TIMESTAMP))
+    
+    if [[ -z "$STREAM_CACHE" ]] || [[ "$force_refresh" == "force" ]] || [[ $cache_age -gt $CACHE_TIMEOUT ]]; then
+        echo "🔄 Обновление кэша потоков..."
+        
+        # Пробуем получить данные через API
+        response=$(curl -s --connect-timeout 10 --max-time 30 \
+            --header "luna-account-id: $ACCOUNT_ID" \
+            "${API_URL}?page_size=1000" 2>/dev/null)
+        
+        if [[ $? -ne 0 ]] || [[ -z "$response" ]]; then
+            echo "❌ Ошибка при запросе к API"
+            return 1
+        fi
+        
+        # Проверяем валидность JSON
+        if ! echo "$response" | jq empty 2>/dev/null; then
+            echo "❌ Ответ API не является валидным JSON"
+            return 1
+        fi
+        
+        STREAM_CACHE="$response"
+        STREAM_CACHE_TIMESTAMP=$current_time
+        echo "✅ Кэш потоков обновлен"
+    else
+        response="$STREAM_CACHE"
+        echo "✅ Используем кэшированные данные (возраст: ${cache_age}с)"
+    fi
+    
+    # Извлекаем потоки из ответа
+    local streams=()
+    
+    # Пробуем разные форматы ответа
+    local stream_ids=$(echo "$response" | jq -r '.streams[]?.stream_id' 2>/dev/null)
+    
+    if [[ -z "$stream_ids" ]]; then
+        stream_ids=$(echo "$response" | jq -r '.[]?.stream_id' 2>/dev/null)
+    fi
+    
+    if [[ -z "$stream_ids" ]]; then
+        echo "❌ Не удалось извлечь stream_id из ответа"
+        return 1
+    fi
+    
+    # Получаем информацию о каждом потоке
+    while IFS= read -r stream_id; do
+        [[ -z "$stream_id" ]] && continue
+        
+        # Получаем информацию о потоке
+        local stream_info=$(echo "$response" | jq -r --arg id "$stream_id" \
+            '.streams[]? | select(.stream_id==$id) | {name: .name, status: .status}' 2>/dev/null)
+        
+        if [[ -z "$stream_info" ]] || [[ "$stream_info" == "null" ]]; then
+            stream_info=$(echo "$response" | jq -r --arg id "$stream_id" \
+                '.[]? | select(.stream_id==$id) | {name: .name, status: .status}' 2>/dev/null)
+        fi
+        
+        local stream_name stream_status
+        if [[ -n "$stream_info" ]] && [[ "$stream_info" != "null" ]]; then
+            stream_name=$(echo "$stream_info" | jq -r '.name // "Без имени"' 2>/dev/null)
+            stream_status=$(echo "$stream_info" | jq -r '.status // "0"' 2>/dev/null)
+        else
+            stream_name="Поток $stream_id"
+            stream_status="0"
+        fi
+        
+        local status_display=$(get_stream_status_display "$stream_status")
+        local display_name="${stream_name:0:30}"
+        if [[ ${#stream_name} -gt 30 ]]; then
+            display_name="${display_name}..."
+        fi
+        
+        streams+=("$stream_id")
+        streams+=("$display_name | $status_display")
+        
+    done <<< "$stream_ids"
+    
+    if [[ ${#streams[@]} -eq 0 ]]; then
+        echo "❌ Потоки не найдены"
+        return 1
+    fi
+    
+    printf '%s\n' "${streams[@]}"
+    return 0
+}
+
+get_stream_status_display() {
+    local status_code="$1"
+    case "$status_code" in
+        "1") echo "🔄 В процессе" ;;
+        "5") echo "⏸️  Остановлен" ;;
+        "3") echo "🔄 Перезапуск" ;;
+        "0") echo "⏳ Ожидание" ;;
+        *) echo "❓ Неизвестный ($status_code)" ;;
+    esac
+}
+
 select_streams_dialog() {
     local title="$1"
     local prompt="$2"
     local selection_mode="$3"  # "single" или "multi"
     
-    local streams
-    streams=($(get_streams_list "force"))
+    echo "📋 Получение списка потоков..."
     
-    if [[ ${#streams[@]} -eq 0 ]]; then
-        show_message "❌ Ошибка" "Не удалось получить список видеопотоков"
+    # Получаем список потоков
+    local streams_output
+    streams_output=$(get_streams_list "force")
+    
+    if [[ $? -ne 0 ]] || [[ -z "$streams_output" ]]; then
+        show_message "❌ Ошибка" "Не удалось получить список видеопотоков\n\nПроверьте:\n• Доступность API\n• Сетевые настройки\n• Account ID"
         return 1
     fi
     
+    # Преобразуем вывод в массив
+    local streams_array=()
+    while IFS= read -r line; do
+        if [[ -n "$line" ]]; then
+            streams_array+=("$line")
+        fi
+    done <<< "$streams_output"
+    
+    local total_streams=$((${#streams_array[@]} / 2))
+    
+    if [[ $total_streams -eq 0 ]]; then
+        show_message "ℹ️  Информация" "Видеопотоки не найдены"
+        return 1
+    fi
+    
+    echo "✅ Найдено потоков: $total_streams"
+    
     if [[ "$selection_mode" == "multi" ]]; then
+        # Режим множественного выбора
         local checklist_options=()
-        for ((i=0; i<${#streams[@]}; i+=2)); do
-            checklist_options+=("${streams[i]}" "${streams[i+1]}" "OFF")
+        for ((i=0; i<${#streams_array[@]}; i+=2)); do
+            local stream_id="${streams_array[i]}"
+            local display_name="${streams_array[i+1]}"
+            checklist_options+=("$stream_id" "$display_name" "OFF")
         done
         
         local choices
         choices=$(show_checklist "$title" "$prompt" "${checklist_options[@]}")
-        SELECTED_STREAMS=()
         
         if [[ -n "$choices" ]]; then
-            IFS=' ' read -r -a SELECTED_STREAMS <<< "$choices"
-            # Удаляем кавычки если они есть
-            SELECTED_STREAMS=("${SELECTED_STREAMS[@]//\"/}")
+            SELECTED_STREAMS=()
+            # Обрабатываем выбор (удаляем кавычки если они есть)
+            IFS=' ' read -r -a selected_array <<< "$choices"
+            for item in "${selected_array[@]}"; do
+                item=$(echo "$item" | sed 's/"//g')
+                SELECTED_STREAMS+=("$item")
+            done
             return 0
         else
             return 1
         fi
+        
     else
+        # Режим одиночного выбора
         local menu_options=()
-        for ((i=0; i<${#streams[@]}; i+=2)); do
-            menu_options+=("${streams[i]}" "${streams[i+1]}")
+        for ((i=0; i<${#streams_array[@]}; i+=2)); do
+            menu_options+=("${streams_array[i]}" "${streams_array[i+1]}")
         done
         
         local choice
@@ -2188,208 +2325,6 @@ api_request() {
                 "$url" 2>/dev/null
             ;;
     esac
-}
-
-get_streams_cache() {
-    local current_time
-    current_time=$(date +%s)
-    local cache_age=$((current_time - STREAM_CACHE_TIMESTAMP))
-    
-    if [[ -z "$STREAM_CACHE" ]] || [[ "$1" == "force" ]] || [[ $cache_age -gt $CACHE_TIMEOUT ]]; then
-        echo "🔄 Обновление кэша потоков (возраст: ${cache_age}с)"
-        
-        local endpoint="?page_size=1000"
-        STREAM_CACHE=$(curl -s --connect-timeout 10 --max-time 30 \
-            --header "luna-account-id: $ACCOUNT_ID" \
-            "${API_URL}${endpoint}" 2>/dev/null)
-        
-        if [[ $? -eq 0 ]] && [[ -n "$STREAM_CACHE" ]]; then
-            if echo "$STREAM_CACHE" | jq empty 2>/dev/null; then
-                local streams_count
-                streams_count=$(echo "$STREAM_CACHE" | jq -r '.streams? | length' 2>/dev/null)
-                
-                if [[ "$streams_count" != "null" ]] && [[ -n "$streams_count" ]]; then
-                    echo "✅ Получено потоков из API: $streams_count"
-                    STREAM_CACHE_TIMESTAMP=$current_time
-                else
-                    echo "⚠️  Ответ API не содержит поле 'streams'"
-                    streams_count=$(echo "$STREAM_CACHE" | jq -r 'length' 2>/dev/null)
-                    if [[ "$streams_count" != "null" ]] && [[ -n "$streams_count" ]] && [[ "$streams_count" -gt 0 ]]; then
-                        echo "✅ Используем альтернативный формат данных, потоков: $streams_count"
-                        STREAM_CACHE_TIMESTAMP=$current_time
-                    else
-                        echo "❌ Ответ API не содержит данных о потоках"
-                        STREAM_CACHE=""
-                        return 1
-                    fi
-                fi
-            else
-                echo "❌ Ответ API не является валидным JSON"
-                STREAM_CACHE=""
-                return 1
-            fi
-        else
-            echo "❌ Не удалось получить данные от API или ответ пустой"
-            STREAM_CACHE=""
-            return 1
-        fi
-    fi
-    
-    echo "$STREAM_CACHE"
-}
-
-get_stream_status_display() {
-    local status_code="$1"
-    case "$status_code" in
-        "1") echo "🔄 В процессе" ;;
-        "5") echo "⏸️  Остановлен" ;;
-        "3") echo "🔄 Перезапуск" ;;
-        "0") echo "⏳ Ожидание" ;;
-        *) echo "❓ Неизвестный ($status_code)" ;;
-    esac
-}
-
-get_streams_list() {
-    local response
-    local force_refresh="$1"
-    
-    response=$(get_streams_cache "$force_refresh")
-    
-    if [[ $? -ne 0 ]] || [[ -z "$response" ]]; then
-        echo "❌ Не удалось получить список потоков от API"
-        echo "🔍 Проверьте:"
-        echo "1. Доступность API по адресу: $API_URL"
-        echo "2. Корректность Account ID: $ACCOUNT_ID"
-        echo "3. Сетевые настройки"
-        
-        local alt_response
-        alt_response=$(curl -s --connect-timeout 5 --max-time 10 \
-            "${API_URL}?page_size=1000" 2>/dev/null)
-        
-        if [[ $? -eq 0 ]] && [[ -n "$alt_response" ]]; then
-            local temp_file
-            temp_file=$(mktemp)
-            echo "$alt_response" > "$temp_file"
-            
-            local stream_ids
-            stream_ids=$(echo "$alt_response" | jq -r '.streams[].stream_id' 2>/dev/null)
-            
-            if [[ -z "$stream_ids" ]]; then
-                stream_ids=$(echo "$alt_response" | jq -r '.[].stream_id' 2>/dev/null)
-            fi
-            
-            if [[ -z "$stream_ids" ]]; then
-                stream_ids=$(grep -o '"stream_id":"[^"]*"' "$temp_file" | cut -d'"' -f4)
-            fi
-            
-            rm -f "$temp_file"
-            
-            if [[ -n "$stream_ids" ]]; then
-                echo "✅ Получены stream_id альтернативным методом"
-                local streams=()
-                while IFS= read -r stream_id; do
-                    if [[ -n "$stream_id" ]]; then
-                        local stream_info
-                        stream_info=$(echo "$alt_response" | jq -r --arg id "$stream_id" '.streams[] | select(.stream_id==$id) | {name: .name, status: .status}' 2>/dev/null)
-                        
-                        if [[ -z "$stream_info" ]] || [[ "$stream_info" == "null" ]]; then
-                            stream_info=$(echo "$alt_response" | jq -r --arg id "$stream_id" '.[] | select(.stream_id==$id) | {name: .name, status: .status}' 2>/dev/null)
-                        fi
-                        
-                        local stream_name stream_status
-                        if [[ -n "$stream_info" ]] && [[ "$stream_info" != "null" ]]; then
-                            stream_name=$(echo "$stream_info" | jq -r '.name // "Без имени"' 2>/dev/null)
-                            stream_status=$(echo "$stream_info" | jq -r '.status // "0"' 2>/dev/null)
-                        else
-                            stream_name="Поток $stream_id"
-                            stream_status="0"
-                        fi
-                        
-                        local status_display
-                        status_display=$(get_stream_status_display "$stream_status")
-                        local display_name="${stream_name:0:30}"
-                        if [[ ${#stream_name} -gt 30 ]]; then
-                            display_name="${display_name}..."
-                        fi
-                        
-                        streams+=("$stream_id" "$display_name | $status_display")
-                    fi
-                done <<< "$stream_ids"
-                
-                if [[ ${#streams[@]} -gt 0 ]]; then
-                    printf '%s\n' "${streams[@]}"
-                    return 0
-                fi
-            fi
-        fi
-        
-        return 1
-    fi
-    
-    if ! echo "$response" | jq empty 2>/dev/null; then
-        echo "❌ Неверный JSON в ответе API"
-        return 1
-    fi
-    
-    local streams=()
-    local temp_file
-    temp_file=$(mktemp)
-    
-    echo "$response" | jq -r '.streams[]? | [.stream_id, .name, .status] | @tsv' 2>/dev/null > "$temp_file"
-    
-    local count=$(wc -l < "$temp_file" 2>/dev/null || echo "0")
-    
-    if [[ "$count" -eq 0 ]]; then
-        echo "$response" | jq -r '.[]? | [.stream_id, .name, .status] | @tsv' 2>/dev/null > "$temp_file"
-        count=$(wc -l < "$temp_file" 2>/dev/null || echo "0")
-    fi
-    
-    if [[ "$count" -eq 0 ]]; then
-        echo "$response" | grep -o '"stream_id":"[^"]*"' | cut -d'"' -f4 > "$temp_file"
-        count=$(wc -l < "$temp_file" 2>/dev/null || echo "0")
-        
-        if [[ "$count" -gt 0 ]]; then
-            echo "✅ Найдено потоков через regex: $count"
-            local streams=()
-            while IFS= read -r stream_id; do
-                if [[ -n "$stream_id" ]]; then
-                    streams+=("$stream_id" "Поток $stream_id | ⏳ Ожидание")
-                fi
-            done < "$temp_file"
-            rm -f "$temp_file"
-            printf '%s\n' "${streams[@]}"
-            return 0
-        fi
-    fi
-    
-    if [[ "$count" -eq 0 ]]; then
-        echo "❌ Не удалось извлечь потоки из ответа"
-        rm -f "$temp_file"
-        return 1
-    fi
-    
-    echo "✅ Найдено потоков для отображения: $count"
-    
-    while IFS=$'\t' read -r id name status; do
-        if [[ -n "$id" && "$id" != "null" ]]; then
-            local status_display
-            status_display=$(get_stream_status_display "$status")
-            local display_name="${name:0:30}"
-            if [[ ${#name} -gt 30 ]]; then
-                display_name="${display_name}..."
-            fi
-            streams+=("$id" "$display_name | $status_display")
-        fi
-    done < "$temp_file"
-    
-    rm -f "$temp_file"
-    
-    if [[ ${#streams[@]} -eq 0 ]]; then
-        echo "❌ Потоки не найдены в ответе API"
-        return 1
-    fi
-    
-    printf '%s\n' "${streams[@]}"
 }
 
 get_active_streams_count() {
@@ -2852,9 +2787,9 @@ list_streams() {
     
     if [[ -z "$stream_list" ]]; then
         stream_list=$(echo "$response" | jq -r '.[] | "\(.stream_id) \(.name) \(.data.reference)"' 2>/dev/null | \
-        while IFS= read -r line; do
-            echo "$line"
-        done)
+    while IFS= read -r line; do
+        echo "$line"
+    done)
     fi
     
     if [[ -z "$stream_list" ]]; then
@@ -5023,7 +4958,7 @@ stop_selected_streams_screen() {
 
 resume_selected_streams_screen() {
     if [[ ${#SELECTED_STREAMS[@]} -eq 0 ]]; then
-        show_message "❌ ОШИБКА" "Сначала выберите видеопотоки через меню '📋 Выбрать видеопотоки'"
+        show_message "❌ Ошибка" "Сначала выберите видеопотоки через меню '📋 Выбрать видеопотоки'"
         return 1
     fi
     
@@ -5593,52 +5528,95 @@ show_config_files() {
         "6" "📦 Конфигурация логов" \
         "7" "📋 Шаблон JSON" \
         "8" "📹 Конфигурация StreamRecorder (docker-compose.yml)" \
+        "9" "📹 Конфигурация StreamRecorder (yucca.toml)" \
         "0" "🔙 Назад")
     
     case "$choice" in
-        "1") [[ -f "$CONFIG_FILE" ]] && show_message "⚙️  ОСНОВНАЯ КОНФИГУРАЦИЯ" "$(cat "$CONFIG_FILE")" || show_message "❌ ОШИБКА" "Файл не найден" ;;
-        "2") [[ -f "$TEMPLATE_CONFIG_FILE" ]] && show_message "📋 КОНФИГУРАЦИЯ ШАБЛОНА" "$(cat "$TEMPLATE_CONFIG_FILE")" || show_message "❌ ОШИБКА" "Файл не найден" ;;
-        "3") [[ -f "$SCANNER_CONFIG_FILE" ]] && show_message "🔍 КОНФИГУРАЦИЯ SCANNER" "$(cat "$SCANNER_CONFIG_FILE")" || show_message "❌ ОШИБКА" "Файл не найден" ;;
-        "4") [[ -f "$BAGS_CONFIG_FILE" ]] && show_message "🎒 КОНФИГУРАЦИЯ BAGS" "$(cat "$BAGS_CONFIG_FILE")" || show_message "❌ ОШИБКА" "Файл не найден" ;;
-        "5") [[ -f "$ANALYSIS_CONFIG_FILE" ]] && show_message "🔍 КОНФИГУРАЦИЯ АНАЛИЗА" "$(cat "$ANALYSIS_CONFIG_FILE")" || show_message "❌ ОШИБКА" "Файл не найден" ;;
-        "6") [[ -f "$LOGS_CONFIG_FILE" ]] && show_message "📦 КОНФИГУРАЦИЯ ЛОГОВ" "$(cat "$LOGS_CONFIG_FILE")" || show_message "❌ ОШИБКА" "Файл не найден" ;;
-        "7") [[ -f "$TEMPLATE_FILE" ]] && show_message "📋 ШАБЛОН JSON" "$(cat "$TEMPLATE_FILE")" 30 90 || show_message "❌ ОШИБКА" "Файл не найден" ;;
-        "8") [[ -f "$RECORDER_CONFIG_FILE" ]] && show_message "📹 КОНФИГУРАЦИЯ STREAMRECORDER" "$(cat "$RECORDER_CONFIG_FILE")" 25 90 || show_message "❌ ОШИБКА" "Файл не найден" ;;
-        "0") return ;;
+        "1")
+            if [[ -f "$CONFIG_FILE" ]]; then
+                show_message "⚙️  ОСНОВНАЯ КОНФИГУРАЦИЯ" "$(cat "$CONFIG_FILE")" 20 80
+            else
+                show_message "❌ ОШИБКА" "Файл конфигурации не найден"
+            fi
+            ;;
+        "2")
+            if [[ -f "$TEMPLATE_CONFIG_FILE" ]]; then
+                show_message "📋 КОНФИГУРАЦИЯ ШАБЛОНА" "$(cat "$TEMPLATE_CONFIG_FILE")" 20 80
+            else
+                show_message "❌ ОШИБКА" "Файл конфигурации шаблона не найден"
+            fi
+            ;;
+        "3")
+            if [[ -f "$SCANNER_CONFIG_FILE" ]]; then
+                show_message "🔍 КОНФИГУРАЦИЯ SCANNER" "$(cat "$SCANNER_CONFIG_FILE")" 20 80
+            else
+                show_message "❌ ОШИБКА" "Файл конфигурации Scanner не найден"
+            fi
+            ;;
+        "4")
+            if [[ -f "$BAGS_CONFIG_FILE" ]]; then
+                show_message "🎒 КОНФИГУРАЦИЯ BAGS" "$(cat "$BAGS_CONFIG_FILE")" 20 80
+            else
+                show_message "❌ ОШИБКА" "Файл конфигурации Bags не найден"
+            fi
+            ;;
+        "5")
+            if [[ -f "$ANALYSIS_CONFIG_FILE" ]]; then
+                show_message "🔍 КОНФИГУРАЦИЯ АНАЛИЗА" "$(cat "$ANALYSIS_CONFIG_FILE")" 20 80
+            else
+                show_message "❌ ОШИБКА" "Файл конфигурации анализа не найден"
+            fi
+            ;;
+        "6")
+            if [[ -f "$LOGS_CONFIG_FILE" ]]; then
+                show_message "📦 КОНФИГУРАЦИЯ ЛОГОВ" "$(cat "$LOGS_CONFIG_FILE")" 20 80
+            else
+                show_message "❌ ОШИБКА" "Файл конфигурации логов не найден"
+            fi
+            ;;
+        "7")
+            if [[ -f "$TEMPLATE_FILE" ]]; then
+                show_message "📋 ШАБЛОН JSON" "$(cat "$TEMPLATE_FILE")" 25 90
+            else
+                show_message "❌ ОШИБКА" "Файл шаблона не найден"
+            fi
+            ;;
+        "8")
+            if [[ -f "$RECORDER_CONFIG_FILE" ]]; then
+                show_message "📹 КОНФИГУРАЦИЯ STREAMRECORDER" "$(cat "$RECORDER_CONFIG_FILE")" 25 90
+            else
+                show_message "❌ ОШИБКА" "Файл docker-compose.yml не найден"
+            fi
+            ;;
+        "9")
+            if [[ -f "$YUCCA_CONFIG_FILE" ]]; then
+                show_message "📹 КОНФИГУРАЦИЯ YUCCA.TOML" "$(cat "$YUCCA_CONFIG_FILE")" 25 90
+            else
+                show_message "❌ ОШИБКА" "Файл yucca.toml не найден"
+            fi
+            ;;
+        "0") ;;
     esac
-}
-
-cleanup_logs_screen() {
-    local days
-    days=$(show_input "🗑️  ОЧИСТКА ЛОГОВ" "Введите количество дней для хранения логов:" "$LOG_RETENTION_DAYS")
-    
-    if [[ -n "$days" ]] && [[ "$days" =~ ^[0-9]+$ ]]; then
-        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "🗑️  Удалить логи старше $days дней?\n\n📁 Директория: $LOGS_DIR"; then
-            cleanup_old_logs "$days"
-        fi
-    else
-        show_message "❌ ОШИБКА" "Введите корректное количество дней"
-    fi
 }
 
 logs_configuration_screen() {
     while true; do
         local choice
-        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n📁 Директория: $LOGS_DIR\n⏱️  Период по умолчанию: $DEFAULT_LOG_HOURS\n📅 Хранение: $LOG_RETENTION_DAYS дней" \
+        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n📁 Директория: $LOGS_DIR\n⏱️  Период по умолчанию: $DEFAULT_LOG_HOURS\n🗑️  Хранение: $LOG_RETENTION_DAYS дней" \
             "1" "📁 Изменить директорию логов" \
             "2" "⏱️  Изменить период по умолчанию" \
-            "3" "📅 Изменить срок хранения" \
+            "3" "🗑️  Изменить период хранения" \
             "4" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1")
                 local new_dir
-                new_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите путь к директории логов:" "$LOGS_DIR")
+                new_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите новую директорию для логов:" "$LOGS_DIR")
                 if [[ -n "$new_dir" ]]; then
                     LOGS_DIR="$new_dir"
-                    save_logs_config
                     mkdir -p "$LOGS_DIR"
+                    save_logs_config
                     show_message "✅ УСПЕХ" "📁 Директория логов обновлена: $LOGS_DIR"
                 fi
                 ;;
@@ -5653,13 +5631,11 @@ logs_configuration_screen() {
                 ;;
             "3")
                 local new_days
-                new_days=$(show_input "📅 СРОК ХРАНЕНИЯ" "Введите срок хранения в днях:" "$LOG_RETENTION_DAYS")
+                new_days=$(show_input "🗑️  ПЕРИОД ХРАНЕНИЯ" "Введите количество дней хранения логов:" "$LOG_RETENTION_DAYS")
                 if [[ -n "$new_days" ]] && [[ "$new_days" =~ ^[0-9]+$ ]]; then
                     LOG_RETENTION_DAYS="$new_days"
                     save_logs_config
-                    show_message "✅ УСПЕХ" "📅 Срок хранения обновлен: $LOG_RETENTION_DAYS дней"
-                else
-                    show_message "❌ ОШИБКА" "Введите корректное число"
+                    show_message "✅ УСПЕХ" "🗑️  Период хранения обновлен: $LOG_RETENTION_DAYS дней"
                 fi
                 ;;
             "4")
@@ -5675,15 +5651,27 @@ logs_configuration_screen() {
     done
 }
 
+cleanup_logs_screen() {
+    local days
+    days=$(show_input "🗑️  ОЧИСТКА СТАРЫХ ЛОГОВ" "Введите количество дней (логи старше этого срока будут удалены):" "$LOG_RETENTION_DAYS")
+    
+    if [[ -n "$days" ]] && [[ "$days" =~ ^[0-9]+$ ]]; then
+        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "Удалить все логи старше $days дней?\n\n📁 Директория: $LOGS_DIR\n\n⚠️  Это действие нельзя отменить!"; then
+            cleanup_old_logs "$days"
+        fi
+    else
+        show_message "❌ ОШИБКА" "Введите корректное количество дней"
+    fi
+}
+
 exit_screen() {
-    if show_yesno "🚪 ВЫХОД" "Вы уверены, что хотите выйти?"; then
-        cleanup
+    if show_yesno "🚪 ВЫХОД" "Вы уверены, что хотите выйти из системы управления?"; then
         exit 0
     fi
 }
 
 # ============================================================================
-# НАЧАЛО РАБОТЫ
+# ЗАПУСК СИСТЕМЫ
 # ============================================================================
 
 check_dependencies
