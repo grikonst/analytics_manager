@@ -3306,9 +3306,18 @@ collect_logs() {
     
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M")
+    local date_dir
+    date_dir=$(date +"%Y-%m-%d")
+    local logs_date_dir="$LOGS_DIR/$date_dir"
+    mkdir -p "$logs_date_dir"
+    
     local archive_name="logs_${timestamp}.tar.gz"
     local temp_dir
     temp_dir=$(mktemp -d)
+    
+    # Создаем структуру директорий
+    mkdir -p "$temp_dir/scanner"
+    mkdir -p "$temp_dir/bags"
     
     local instances_to_collect=()
     if [[ "$selected_instances" == "all" ]]; then
@@ -3327,6 +3336,24 @@ collect_logs() {
     
     local total_instances=${#instances_to_collect[@]}
     local processed=0
+    local scanner_logs=()
+    local bags_logs=()
+    
+    # Создаем файлы для объединенных логов
+    local scanner_all_log="$temp_dir/scanner/scanner_all.log"
+    local bags_all_log="$temp_dir/bags/bags_all.log"
+    
+    echo "=== ОБЪЕДИНЕННЫЙ ЛОГ SCANNER ===" > "$scanner_all_log"
+    echo "Время сбора: $(date)" >> "$scanner_all_log"
+    echo "Период: $hours" >> "$scanner_all_log"
+    echo "=================================" >> "$scanner_all_log"
+    echo "" >> "$scanner_all_log"
+    
+    echo "=== ОБЪЕДИНЕННЫЙ ЛОГ BAGS ===" > "$bags_all_log"
+    echo "Время сбора: $(date)" >> "$bags_all_log"
+    echo "Период: $hours" >> "$bags_all_log"
+    echo "=================================" >> "$bags_all_log"
+    echo "" >> "$bags_all_log"
     
     for instance in "${instances_to_collect[@]}"; do
         ((processed++))
@@ -3338,7 +3365,12 @@ collect_logs() {
             echo "📦 Сбор логов: $instance ($processed/$total_instances)"
         fi
         
-        local log_file="$temp_dir/${instance}.log"
+        local log_file
+        if [[ "$instance" == *"scanner"* ]]; then
+            log_file="$temp_dir/scanner/${instance}.log"
+        else
+            log_file="$temp_dir/bags/${instance}.log"
+        fi
         
         if docker ps -a 2>/dev/null | grep -q "$instance"; then
             if docker logs --since "$hours" --timestamps "$instance" > "$log_file" 2>&1; then
@@ -3411,7 +3443,7 @@ collect_logs_screen() {
 list_log_archives() {
     mkdir -p "$LOGS_DIR"
     local archives
-    archives=($(ls -t "$LOGS_DIR"/*.tar.gz 2>/dev/null))
+    archives=($(find "$LOGS_DIR" -name "*.tar.gz" -type f 2>/dev/null | sort -r))
     
     if [[ ${#archives[@]} -eq 0 ]]; then
         show_message "ℹ️  Информация" "Архивы логов не найдены"
@@ -3472,17 +3504,22 @@ cleanup_old_logs() {
 show_logs_stats() {
     mkdir -p "$LOGS_DIR"
     local total_archives oldest_archive newest_archive
-    total_archives=$(ls "$LOGS_DIR"/*.tar.gz 2>/dev/null | wc -l)
+    total_archives=$(find "$LOGS_DIR" -name "*.tar.gz" -type f 2>/dev/null | wc -l)
     local total_size
     total_size=$(du -sh "$LOGS_DIR" 2>/dev/null | cut -f1 || echo "0")
-    oldest_archive=$(ls -t "$LOGS_DIR"/*.tar.gz 2>/dev/null | tail -1 2>/dev/null || echo "N/A")
-    newest_archive=$(ls -t "$LOGS_DIR"/*.tar.gz 2>/dev/null | head -1 2>/dev/null || echo "N/A")
+    oldest_archive=$(find "$LOGS_DIR" -name "*.tar.gz" -type f -printf '%T+ %p\n' 2>/dev/null | sort | head -1 | cut -d' ' -f2-)
+    newest_archive=$(find "$LOGS_DIR" -name "*.tar.gz" -type f -printf '%T+ %p\n' 2>/dev/null | sort -r | head -1 | cut -d' ' -f2-)
     
     local stats_info="📊 Статистика логов:\n\n"
     stats_info+="📦 Всего архивов: $total_archives\n"
     stats_info+="💾 Общий размер: $total_size\n"
     
-    if [[ "$oldest_archive" != "N/A" ]]; then
+    # Подсчет по датам
+    local dates_count
+    dates_count=$(find "$LOGS_DIR" -maxdepth 1 -type d -name "20*" 2>/dev/null | wc -l)
+    stats_info+="Даты с логами: $dates_count\n"
+    
+    if [[ "$oldest_archive" != "" ]]; then
         local oldest_size oldest_date
         oldest_size=$(du -h "$oldest_archive" 2>/dev/null | cut -f1 || echo "N/A")
         oldest_date=$(stat -c %y "$oldest_archive" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
@@ -3490,7 +3527,7 @@ show_logs_stats() {
         stats_info+="  📊 Размер: $oldest_size, 📅 Дата: $oldest_date\n"
     fi
     
-    if [[ "$newest_archive" != "N/A" ]]; then
+    if [[ "$newest_archive" != "" ]]; then
         local newest_size newest_date
         newest_size=$(du -h "$newest_archive" 2>/dev/null | cut -f1 || echo "N/A")
         newest_date=$(stat -c %y "$newest_archive" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
