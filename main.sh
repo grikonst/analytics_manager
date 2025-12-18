@@ -525,7 +525,7 @@ get_facestream_version() {
 }
 
 # ============================================================================
-# ФУНКЦИЯ: ПОЛУЧЕНИЕ РЕЛИЗОВ АГЕНТОВ АНАЛИТИКИ
+# ФУНКЦИЯ: Получение РЕЛИЗОВ АГЕНТОВ АНАЛИТИКИ
 # ============================================================================
 
 get_agent_releases() {
@@ -570,7 +570,7 @@ get_agent_releases() {
         return 1
     fi
     
-    # ПОЛУЧЕНИЕ архивов Docker образов
+    # Получение архивов Docker образов
     local timestamp
     timestamp=$(date +%Y%m%d_%H%M%S)
     local releases_subdir="$RELEASES_DIR/$timestamp"
@@ -579,7 +579,7 @@ get_agent_releases() {
     local current=0
     local total_archives=4
     
-    show_message "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архивов Docker образов...\n\nВсего архивов: $total_archives\n\nДиректория: $releases_subdir"
+    show_message "Получение архивов" "Получение архивов Docker образов...\n\nВсего архивов: $total_archives\n\nДиректория: $releases_subdir"
     
     # 1. Scanner основной образ
     ((current++))
@@ -587,9 +587,9 @@ get_agent_releases() {
     local scanner_archive="$releases_subdir/$scanner_tag.tar"
     
     if [[ -n "$TUI_CMD" ]]; then
-        show_progress_with_percent "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архива: $scanner_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
+        show_progress_with_percent "Получение архивов" "Получение архива: $scanner_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
     else
-        echo "ПОЛУЧЕНИЕ архива: $scanner_tag.tar ($current/$total_archives)"
+        echo "Получение архива: $scanner_tag.tar ($current/$total_archives)"
     fi
     
     if docker save -o "$scanner_archive" "$scanner_image" 2>&1; then
@@ -607,9 +607,9 @@ get_agent_releases() {
     local scanner_configs_archive="$releases_subdir/configs-$scanner_tag.tar"
     
     if [[ -n "$TUI_CMD" ]]; then
-        show_progress_with_percent "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архива: configs-$scanner_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
+        show_progress_with_percent "Получение архивов" "Получение архива: configs-$scanner_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
     else
-        echo "ПОЛУЧЕНИЕ архива: configs-$scanner_tag.tar ($current/$total_archives)"
+        echo "Получение архива: configs-$scanner_tag.tar ($current/$total_archives)"
     fi
     
     if docker save -o "$scanner_configs_archive" "$scanner_configs_image" 2>&1; then
@@ -627,9 +627,9 @@ get_agent_releases() {
     local bags_archive="$releases_subdir/$bags_tag.tar"
     
     if [[ -n "$TUI_CMD" ]]; then
-        show_progress_with_percent "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архива: $bags_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
+        show_progress_with_percent "Получение архивов" "Получение архива: $bags_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
     else
-        echo "ПОЛУЧЕНИЕ архива: $bags_tag.tar ($current/$total_archives)"
+        echo "Получение архива: $bags_tag.tar ($current/$total_archives)"
     fi
     
     if docker save -o "$bags_archive" "$bags_image" 2>&1; then
@@ -647,9 +647,9 @@ get_agent_releases() {
     local bags_configs_archive="$releases_subdir/configs-$bags_tag.tar"
     
     if [[ -n "$TUI_CMD" ]]; then
-        show_progress_with_percent "ПОЛУЧЕНИЕ архивов" "ПОЛУЧЕНИЕ архива: configs-$bags_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
+        show_progress_with_percent "Получение архивов" "Получение архива: configs-$bags_tag.tar ($current/$total_archives)" "$((current * 100 / total_archives))"
     else
-        echo "ПОЛУЧЕНИЕ архива: configs-$bags_tag.tar ($current/$total_archives)"
+        echo "Получение архива: configs-$bags_tag.tar ($current/$total_archives)"
     fi
     
     if docker save -o "$bags_configs_archive" "$bags_configs_image" 2>&1; then
@@ -661,8 +661,8 @@ get_agent_releases() {
         rm -f "$bags_configs_archive" 2>/dev/null
     fi
     
-    # ПОЛУЧЕНИЕ общего сжатого архива
-    show_message "Сжатие архивов" "ПОЛУЧЕНИЕ общего сжатого архива...\n\nЭто может занять некоторое время в зависимости от размера образов."
+    # Получение общего сжатого архива
+    show_message "Сжатие архивов" "Получение общего сжатого архива...\n\nЭто может занять некоторое время в зависимости от размера образов."
     
     local final_archive="$RELEASES_DIR/agents_releases_$timestamp.tar.zst"
     
@@ -2887,9 +2887,18 @@ collect_logs() {
     
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M")
+    local date_dir
+    date_dir=$(date +"%Y-%m-%d")
+    local logs_date_dir="$LOGS_DIR/$date_dir"
+    mkdir -p "$logs_date_dir"
+    
     local archive_name="logs_${timestamp}.tar.gz"
     local temp_dir
     temp_dir=$(mktemp -d)
+    
+    # Создаем структуру директорий
+    mkdir -p "$temp_dir/scanner"
+    mkdir -p "$temp_dir/bags"
     
     local instances_to_collect=()
     if [[ "$selected_instances" == "all" ]]; then
@@ -2907,6 +2916,24 @@ collect_logs() {
     
     local total_instances=${#instances_to_collect[@]}
     local processed=0
+    local scanner_logs=()
+    local bags_logs=()
+    
+    # Создаем файлы для объединенных логов
+    local scanner_all_log="$temp_dir/scanner/scanner_all.log"
+    local bags_all_log="$temp_dir/bags/bags_all.log"
+    
+    echo "=== ОБЪЕДИНЕННЫЙ ЛОГ SCANNER ===" > "$scanner_all_log"
+    echo "Время сбора: $(date)" >> "$scanner_all_log"
+    echo "Период: $hours" >> "$scanner_all_log"
+    echo "=================================" >> "$scanner_all_log"
+    echo "" >> "$scanner_all_log"
+    
+    echo "=== ОБЪЕДИНЕННЫЙ ЛОГ BAGS ===" > "$bags_all_log"
+    echo "Время сбора: $(date)" >> "$bags_all_log"
+    echo "Период: $hours" >> "$bags_all_log"
+    echo "=================================" >> "$bags_all_log"
+    echo "" >> "$bags_all_log"
     
     for instance in "${instances_to_collect[@]}"; do
         ((processed++))
@@ -2918,35 +2945,88 @@ collect_logs() {
             echo "Сбор логов: $instance ($processed/$total_instances)"
         fi
         
-        local log_file="$temp_dir/${instance}.log"
+        local log_file
+        if [[ "$instance" == *"scanner"* ]]; then
+            log_file="$temp_dir/scanner/${instance}.log"
+        else
+            log_file="$temp_dir/bags/${instance}.log"
+        fi
         
         if docker ps -a 2>/dev/null | grep -q "$instance"; then
-            if docker logs --since "$hours" --timestamps "$instance" > "$log_file" 2>&1; then
+            echo "=== Логи контейнера $instance ===" > "$log_file"
+            echo "Время сбора: $(date)" >> "$log_file"
+            echo "Период: $hours" >> "$log_file"
+            echo "==============================" >> "$log_file"
+            echo "" >> "$log_file"
+            
+            if docker logs --since "$hours" --timestamps "$instance" >> "$log_file" 2>&1; then
                 echo "Логи собраны для $instance"
+                
+                # Добавляем логи в объединенные файлы
+                if [[ "$instance" == *"scanner"* ]]; then
+                    echo "=== $instance ===" >> "$scanner_all_log"
+                    echo "==============================" >> "$scanner_all_log"
+                    tail -n +7 "$log_file" >> "$scanner_all_log"  # Пропускаем заголовок
+                    echo "" >> "$scanner_all_log"
+                    echo "" >> "$scanner_all_log"
+                    scanner_logs+=("$instance")
+                else
+                    echo "=== $instance ===" >> "$bags_all_log"
+                    echo "==============================" >> "$bags_all_log"
+                    tail -n +7 "$log_file" >> "$bags_all_log"  # Пропускаем заголовок
+                    echo "" >> "$bags_all_log"
+                    echo "" >> "$bags_all_log"
+                    bags_logs+=("$instance")
+                fi
             else
-                echo "Ошибка сбора логов для $instance"
-                echo "Ошибка сбора логов для контейнера $instance" > "$log_file"
+                echo "Ошибка сбора логов для $instance" >> "$log_file"
+                echo "Логи недоступны" >> "$log_file"
             fi
         else
-            echo "Контейнер $instance не найден"
             echo "Контейнер $instance не найден или не запущен" > "$log_file"
         fi
     done
     
-    if tar -czf "$LOGS_DIR/$archive_name" -C "$temp_dir" .; then
+    # Создаем информационный файл
+    local info_file="$temp_dir/info.txt"
+    echo "Отчет о сборе логов" > "$info_file"
+    echo "===================" >> "$info_file"
+    echo "Дата сбора: $(date)" >> "$info_file"
+    echo "Период: $hours" >> "$info_file"
+    echo "" >> "$info_file"
+    echo "Собрано логов Scanner: ${#scanner_logs[@]}" >> "$info_file"
+    for instance in "${scanner_logs[@]}"; do
+        echo "  - $instance" >> "$info_file"
+    done
+    echo "" >> "$info_file"
+    echo "Собрано логов Bags: ${#bags_logs[@]}" >> "$info_file"
+    for instance in "${bags_logs[@]}"; do
+        echo "  - $instance" >> "$info_file"
+    done
+    
+    # Создаем архив
+    if tar -czf "$logs_date_dir/$archive_name" -C "$temp_dir" .; then
         echo "Архив логов создан: $archive_name"
         rm -rf "$temp_dir"
         
         local archive_size
-        archive_size=$(du -h "$LOGS_DIR/$archive_name" 2>/dev/null | cut -f1 || echo "N/A")
+        archive_size=$(du -h "$logs_date_dir/$archive_name" 2>/dev/null | cut -f1 || echo "N/A")
         local archive_info="Архив логов успешно создан!\n\n"
         archive_info+="Имя файла: $archive_name\n"
         archive_info+="Размер: $archive_size\n"
         archive_info+="Период: $hours\n"
-        archive_info+="Инстансы: ${instances_to_collect[*]}\n"
-        archive_info+="Путь: $LOGS_DIR/$archive_name"
+        archive_info+="Дата: $date_dir\n"
+        archive_info+="Инстансов Scanner: ${#scanner_logs[@]}\n"
+        archive_info+="Инстансов Bags: ${#bags_logs[@]}\n"
+        archive_info+="Объединенные файлы:\n"
+        archive_info+="  - scanner_all.log (все логи Scanner)\n"
+        archive_info+="  - bags_all.log (все логи Bags)\n"
+        archive_info+="Путь: $logs_date_dir/$archive_name"
         
         show_message "Сбор логов завершен" "$archive_info"
+        
+        # Создаем симлинк на последний архив для удобства
+        ln -sf "$logs_date_dir/$archive_name" "$LOGS_DIR/latest_logs.tar.gz" 2>/dev/null
     else
         echo "Ошибка создания архива логов"
         show_message "Ошибка" "Не удалось создать архив логов"
@@ -2972,13 +3052,16 @@ collect_logs_screen() {
         instances_options+=("luna-agent-bags-$i" "Bags инстанс $i" "OFF")
     done
     
+    # Добавляем опции для выбора всех
+    instances_options+=("all" "ВСЕ инстансы" "OFF")
+    
     local selected_instances
     selected_instances=$(show_checklist "ВЫБОР ИНСТАНСОВ" "Выберите инстансы для сбора логов:" "${instances_options[@]}")
     
     if [[ -n "$selected_instances" ]]; then
         selected_instances=$(echo "$selected_instances" | sed 's/"//g')
         
-        if show_yesno "ПОДТВЕРЖДЕНИЕ" "Собрать логи за период: $hours\n\nИнстансы:\n$selected_instances"; then
+        if show_yesno "ПОДТВЕРЖДЕНИЕ" "Собрать логи за период: $hours\n\nВыбранные инстансы:\n$selected_instances\n\nЛоги будут объединены по типам агентов (scanner/bags)."; then
             collect_logs "$hours" "$selected_instances"
         fi
     else
@@ -2989,7 +3072,7 @@ collect_logs_screen() {
 list_log_archives() {
     mkdir -p "$LOGS_DIR"
     local archives
-    archives=($(ls -t "$LOGS_DIR"/*.tar.gz 2>/dev/null))
+    archives=($(find "$LOGS_DIR" -name "*.tar.gz" -type f 2>/dev/null | sort -r))
     
     if [[ ${#archives[@]} -eq 0 ]]; then
         show_message "Информация" "Архивы логов не найдены"
@@ -3050,17 +3133,22 @@ cleanup_old_logs() {
 show_logs_stats() {
     mkdir -p "$LOGS_DIR"
     local total_archives oldest_archive newest_archive
-    total_archives=$(ls "$LOGS_DIR"/*.tar.gz 2>/dev/null | wc -l)
+    total_archives=$(find "$LOGS_DIR" -name "*.tar.gz" -type f 2>/dev/null | wc -l)
     local total_size
     total_size=$(du -sh "$LOGS_DIR" 2>/dev/null | cut -f1 || echo "0")
-    oldest_archive=$(ls -t "$LOGS_DIR"/*.tar.gz 2>/dev/null | tail -1 2>/dev/null || echo "N/A")
-    newest_archive=$(ls -t "$LOGS_DIR"/*.tar.gz 2>/dev/null | head -1 2>/dev/null || echo "N/A")
+    oldest_archive=$(find "$LOGS_DIR" -name "*.tar.gz" -type f -printf '%T+ %p\n' 2>/dev/null | sort | head -1 | cut -d' ' -f2-)
+    newest_archive=$(find "$LOGS_DIR" -name "*.tar.gz" -type f -printf '%T+ %p\n' 2>/dev/null | sort -r | head -1 | cut -d' ' -f2-)
     
     local stats_info="Статистика логов:\n\n"
     stats_info+="Всего архивов: $total_archives\n"
     stats_info+="Общий размер: $total_size\n"
     
-    if [[ "$oldest_archive" != "N/A" ]]; then
+    # Подсчет по датам
+    local dates_count
+    dates_count=$(find "$LOGS_DIR" -maxdepth 1 -type d -name "20*" 2>/dev/null | wc -l)
+    stats_info+="Даты с логами: $dates_count\n"
+    
+    if [[ "$oldest_archive" != "" ]]; then
         local oldest_size oldest_date
         oldest_size=$(du -h "$oldest_archive" 2>/dev/null | cut -f1 || echo "N/A")
         oldest_date=$(stat -c %y "$oldest_archive" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
@@ -3068,12 +3156,22 @@ show_logs_stats() {
         stats_info+="  Размер: $oldest_size, Дата: $oldest_date\n"
     fi
     
-    if [[ "$newest_archive" != "N/A" ]]; then
+    if [[ "$newest_archive" != "" ]]; then
         local newest_size newest_date
         newest_size=$(du -h "$newest_archive" 2>/dev/null | cut -f1 || echo "N/A")
         newest_date=$(stat -c %y "$newest_archive" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
         stats_info+="Самый новый архив: $(basename "$newest_archive")\n"
         stats_info+="  Размер: $newest_size, Дата: $newest_date\n"
+    fi
+    
+    # Последний симлинк
+    if [[ -L "$LOGS_DIR/latest_logs.tar.gz" ]]; then
+        local latest_link_target
+        latest_link_target=$(readlink -f "$LOGS_DIR/latest_logs.tar.gz" 2>/dev/null)
+        if [[ -n "$latest_link_target" ]]; then
+            stats_info+="\nСсылка на последний архив:\n"
+            stats_info+="  $(basename "$latest_link_target")\n"
+        fi
     fi
     
     stats_info+="\nТекущие настройки:\n"
@@ -3422,7 +3520,7 @@ check_api_health() {
     fi
     
     
-    # ПОЛУЧЕНИЕ файла отчета
+    # Получение файла отчета
     local report_dir="$REPORT_DIR/api_health"
     mkdir -p "$report_dir"
     local report_file="$report_dir/api_health_$(date +%Y%m%d_%H%M).txt"
@@ -4145,7 +4243,7 @@ diagnostics_monitoring_menu() {
         local choice
         choice=$(show_menu "ДИАГНОСТИКА И МОНИТОРИНГ" "Диагностика потоков и технические отчёты\n\nАнализ • Мониторинг • Отчеты" \
             "1" "Диагностика видеопотоков камер" \
-            "2" "ПОЛУЧЕНИЕ кадров видеопотоков" \
+            "2" "Получение кадров видеопотоков" \
             "3" "Системный мониторинг" \
             "4" "Управление логами агентов" \
             "5" "Состояние системы" \
@@ -4169,9 +4267,9 @@ diagnostics_monitoring_menu() {
 recording_and_frames_menu() {
     while true; do
         local choice
-        choice=$(show_menu "ПОЛУЧЕНИЕ КАДРОВ ВИДЕОПОТОКОВ С КАМЕР" "ПОЛУЧЕНИЕ кадров с камер\n\nКадры • Одиночные • Пакетные" \
-            "1" "ПОЛУЧЕНИЕ кадров из файла" \
-            "2" "ПОЛУЧЕНИЕ кадра с одной камеры" \
+        choice=$(show_menu "Получение КАДРОВ ВИДЕОПОТОКОВ С КАМЕР" "Получение кадров с камер\n\nКадры • Одиночные • Пакетные" \
+            "1" "Получение кадров из файла" \
+            "2" "Получение кадра с одной камеры" \
             "0" "Назад")
         
         case "$choice" in
@@ -4480,12 +4578,12 @@ logs_management_menu() {
 
 capture_frames_screen() {
     local input_file
-    input_file=$(show_input "ПОЛУЧЕНИЕ КАДРОВ" "Введите путь к файлу с камерами:" "$DEFAULT_CAMS_LIST")
+    input_file=$(show_input "Получение КАДРОВ" "Введите путь к файлу с камерами:" "$DEFAULT_CAMS_LIST")
     
     if [[ -n "$input_file" ]]; then
         local preview
         preview=$(head -10 "$input_file" 2>/dev/null || echo "Не удалось прочитать файл")
-        if show_yesno "ПОДТВЕРЖДЕНИЕ" "Файл: $input_file\n\nПервые 10 строк:\n$preview\n\nПродолжить ПОЛУЧЕНИЕ кадров?"; then
+        if show_yesno "ПОДТВЕРЖДЕНИЕ" "Файл: $input_file\n\nПервые 10 строк:\n$preview\n\nПродолжить Получение кадров?"; then
             capture_frames "$input_file"
         fi
     else
@@ -4495,11 +4593,11 @@ capture_frames_screen() {
 
 capture_single_frame_screen() {
     local camera_name
-    camera_name=$(show_input "ПОЛУЧЕНИЕ СНИМКА" "Введите имя камеры:" "")
+    camera_name=$(show_input "Получение СНИМКА" "Введите имя камеры:" "")
     [[ -z "$camera_name" ]] && return
     
     local camera_url
-    camera_url=$(show_input "ПОЛУЧЕНИЕ СНИМКА" "Введите URL камеры:" "")
+    camera_url=$(show_input "Получение СНИМКА" "Введите URL камеры:" "")
     [[ -z "$camera_url" ]] && return
     
     local temp_file
@@ -4872,7 +4970,7 @@ show_system_info() {
     
     system_info+="СИСТЕМНЫЕ РЕСУРСЫ:\n"
     system_info+="CPU:\n"
-    system_info+=$(get_cpu_info)
+    system_info+="$(get_cpu_info)\n"
     system_info+="\nGPU:\n"
     system_info+=$(get_gpu_info)
     
@@ -4955,25 +5053,25 @@ system_settings_screen() {
 template_management_screen() {
     while true; do
         local analytics_status=""
-        [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Оружие: ВКЛ "
-        [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Драки: ВКЛ "
-        [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Пожар: ВКЛ "
-        [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Люди: ВКЛ "
-        [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Маски: ВКЛ "
-        [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Сумки: ВКЛ "
-        [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Руки: ВКЛ "
-        [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Лежачие: ВКЛ "
+        [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Оружие:  "
+        [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Драки:  "
+        [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Пожар:  "
+        [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Люди:  "
+        [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Балаклавы/Никаб:  "
+        [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Сумки:  "
+        [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Руки:  "
+        [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="Лежачие:  "
         
         local choice
         choice=$(show_menu "ШАБЛОН КОНФИГУРАЦИИ АНАЛИТИКИ" "Текущие настройки аналитики:\n$analytics_status" \
-            "1" "Оружие: $([[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "2" "Драки: $([[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "3" "Пожар: $([[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "4" "Люди: $([[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "5" "Маски: $([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "6" "Сумки: $([[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "7" "Руки: $([[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
-            "8" "Лежачие: $([[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && echo "ВКЛ" || echo "ВЫКЛ")" \
+            "1" "Оружие: $([[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && echo "" || echo "-")" \
+            "2" "Драки: $([[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && echo "" || echo "-")" \
+            "3" "Пожар: $([[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && echo "" || echo "-")" \
+            "4" "Люди: $([[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && echo "" || echo "-")" \
+            "5" "Балаклавы/Никаб: $([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "" || echo "-")" \
+            "6" "Сумки: $([[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && echo "" || echo "-")" \
+            "7" "Руки: $([[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && echo "" || echo "-")" \
+            "8" "Лежачие: $([[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && echo "" || echo "-")" \
             "9" "Обновить шаблон" \
             "10" "Сбросить настройки" \
             "0" "Назад")
@@ -5027,7 +5125,7 @@ template_management_screen() {
                 fi
                 save_template_config
                 create_default_template
-                show_message "Аналитика 'Маски'" "$([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "Включена" || echo "Выключена")"
+                show_message "Аналитика 'Балаклавы/Никаб'" "$([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "Включена" || echo "Выключена")"
                 ;;
             "6")
                 if [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]]; then
