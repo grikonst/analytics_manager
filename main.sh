@@ -3397,43 +3397,40 @@ list_log_archives() {
     show_message "📦 Архивы логов (${#archives[@]})" "$archive_list" 20 80
 }
 
+# УПРОЩЕННАЯ ФУНКЦИЯ ОЧИСТКИ ЛОГОВ
 cleanup_old_logs() {
-    local days="$1"
+    echo "🗑️  Удаление старых логов"
     
-    if [[ ! "$days" =~ ^[0-9]+$ ]]; then
-        show_message "❌ Ошибка" "Некорректное количество дней: $days"
-        return 1
+    local days="$LOG_RETENTION_DAYS"
+    local deleted_count=0
+    local freed_space=0
+    
+    if [[ ! "$days" =~ ^[0-9]+$ ]] || [[ "$days" -lt 1 ]]; then
+        days=7
     fi
     
-    echo "🗑️  Очистка логов старше $days дней"
-    
-    local deleted_count=0
-    local total_size=0
+    echo "🔍 Поиск логов старше $days дней..."
     
     while IFS= read -r -d '' file; do
         if [[ -f "$file" ]]; then
             local file_size
-            file_size=$(du -b "$file" | cut -f1)
-            ((total_size += file_size))
+            file_size=$(du -b "$file" 2>/dev/null | cut -f1 || echo 0)
             if rm -f "$file"; then
                 ((deleted_count++))
-                echo "🗑️  Удален файл: $(basename "$file")"
-            else
-                echo "❌ Ошибка удаления файла: $(basename "$file")"
+                ((freed_space += file_size))
+                echo "🗑️  Удален: $(basename "$file")"
             fi
         fi
     done < <(find "$LOGS_DIR" -name "*.tar.gz" -mtime "+$days" -print0 2>/dev/null)
     
-    local freed_space
-    freed_space=$(numfmt --to=iec-i --suffix=B $total_size 2>/dev/null || echo "N/A")
-    
-    local result_info="✅ Очистка логов завершена!\n\n"
-    result_info+="🗑️  Удалено файлов: $deleted_count\n"
-    result_info+="💾 Освобождено места: $freed_space\n"
-    result_info+="📅 Критерий: старше $days дней"
-    
-    show_message "📊 Результат очистки" "$result_info"
-    echo "✅ Очистка логов завершена: удалено $deleted_count файлов, освобождено $freed_space"
+    if [[ $deleted_count -gt 0 ]]; then
+        local freed_human
+        freed_human=$(numfmt --to=iec-i --suffix=B $freed_space 2>/dev/null || echo "$freed_space байт")
+        
+        show_message "✅ Очистка завершена" "🗑️  Удалено файлов: $deleted_count\n💾 Освобождено: $freed_human\n📅 Логи старше $days дней удалены"
+    else
+        show_message "ℹ️  Информация" "Логов для удаления не найдено"
+    fi
 }
 
 show_logs_stats() {
@@ -3442,38 +3439,36 @@ show_logs_stats() {
     total_archives=$(find "$LOGS_DIR" -name "*.tar.gz" -type f 2>/dev/null | wc -l)
     local total_size
     total_size=$(du -sh "$LOGS_DIR" 2>/dev/null | cut -f1 || echo "0")
-    oldest_archive=$(find "$LOGS_DIR" -name "*.tar.gz" -type f -printf '%T+ %p\n' 2>/dev/null | sort | head -1 | cut -d' ' -f2-)
-    newest_archive=$(find "$LOGS_DIR" -name "*.tar.gz" -type f -printf '%T+ %p\n' 2>/dev/null | sort -r | head -1 | cut -d' ' -f2-)
     
     local stats_info="📊 Статистика логов:\n\n"
     stats_info+="📦 Всего архивов: $total_archives\n"
     stats_info+="💾 Общий размер: $total_size\n"
     
-    # Подсчет по датам
-    local dates_count
-    dates_count=$(find "$LOGS_DIR" -maxdepth 1 -type d -name "20*" 2>/dev/null | wc -l)
-    stats_info+="Даты с логами: $dates_count\n"
-    
-    if [[ "$oldest_archive" != "" ]]; then
-        local oldest_size oldest_date
-        oldest_size=$(du -h "$oldest_archive" 2>/dev/null | cut -f1 || echo "N/A")
-        oldest_date=$(stat -c %y "$oldest_archive" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
-        stats_info+="📅 Самый старый архив: $(basename "$oldest_archive")\n"
-        stats_info+="  📊 Размер: $oldest_size, 📅 Дата: $oldest_date\n"
-    fi
-    
-    if [[ "$newest_archive" != "" ]]; then
-        local newest_size newest_date
-        newest_size=$(du -h "$newest_archive" 2>/dev/null | cut -f1 || echo "N/A")
-        newest_date=$(stat -c %y "$newest_archive" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
-        stats_info+="🆕 Самый новый архив: $(basename "$newest_archive")\n"
-        stats_info+="  📊 Размер: $newest_size, 📅 Дата: $newest_date\n"
+    if [[ $total_archives -gt 0 ]]; then
+        oldest_archive=$(find "$LOGS_DIR" -name "*.tar.gz" -type f -printf '%T+ %p\n' 2>/dev/null | sort | head -1 | cut -d' ' -f2-)
+        newest_archive=$(find "$LOGS_DIR" -name "*.tar.gz" -type f -printf '%T+ %p\n' 2>/dev/null | sort -r | head -1 | cut -d' ' -f2-)
+        
+        if [[ -n "$oldest_archive" ]]; then
+            local oldest_size oldest_date
+            oldest_size=$(du -h "$oldest_archive" 2>/dev/null | cut -f1 || echo "N/A")
+            oldest_date=$(stat -c %y "$oldest_archive" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
+            stats_info+="📅 Самый старый: $(basename "$oldest_archive")\n"
+            stats_info+="  📊 Размер: $oldest_size, 📅 Дата: $oldest_date\n"
+        fi
+        
+        if [[ -n "$newest_archive" ]]; then
+            local newest_size newest_date
+            newest_size=$(du -h "$newest_archive" 2>/dev/null | cut -f1 || echo "N/A")
+            newest_date=$(stat -c %y "$newest_archive" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
+            stats_info+="🆕 Самый новый: $(basename "$newest_archive")\n"
+            stats_info+="  📊 Размер: $newest_size, 📅 Дата: $newest_date\n"
+        fi
     fi
     
     stats_info+="\n⚙️  Текущие настройки:\n"
-    stats_info+="📁 Директория логов: $LOGS_DIR\n"
+    stats_info+="📁 Директория: $LOGS_DIR\n"
     stats_info+="⏱️  Период хранения: $LOG_RETENTION_DAYS дней\n"
-    stats_info+="⏰ Период по умолчанию: $DEFAULT_LOG_HOURS\n"
+    stats_info+="⏰ Период сбора: $DEFAULT_LOG_HOURS\n"
     
     show_message "📊 Статистика логов" "$stats_info"
 }
@@ -4296,6 +4291,76 @@ stop_bags_instances() {
 }
 
 # ============================================================================
+# НОВАЯ ФУНКЦИЯ: ОСТАНОВКА И УДАЛЕНИЕ ВСЕХ КОНТЕЙНЕРОВ DOCKER
+# ============================================================================
+
+stop_all_docker_containers() {
+    echo "🛑 Остановка и удаление всех контейнеров Docker..."
+    
+    # Получаем список всех контейнеров
+    local containers
+    containers=$(docker container ls -aq 2>/dev/null)
+    
+    if [[ -z "$containers" ]]; then
+        show_message "📊 Результат" "Контейнеры Docker не найдены"
+        return 0
+    fi
+    
+    local container_count
+    container_count=$(echo "$containers" | wc -l)
+    
+    show_message "ℹ️  Информация" "Найдено контейнеров для удаления: $container_count"
+    
+    if ! show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ" "ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ ОСТАНОВИТЬ И УДАЛИТЬ ВСЕ КОНТЕЙНЕРЫ DOCKER?\n\n📊 Количество: $container_count\n\n⚠️  Это остановит ВСЕ сервисы включая:\n• Агенты Scanner и Bags\n• StreamRecorder\n• Другие контейнеры\n\n⛔ Действие НЕОБРАТИМО!"; then
+        show_message "❌ Отмена" "Удаление контейнеров отменено"
+        return 0
+    fi
+    
+    echo "🛑 Останавливаем и удаляем все контейнеры..."
+    
+    # Останавливаем и удаляем все контейнеры
+    if docker container rm -f $(docker container ls -aq) 2>&1 | tee /tmp/docker_cleanup.log; then
+        local success_count
+        success_count=$(grep -c "Removed" /tmp/docker_cleanup.log 2>/dev/null || echo "0")
+        
+        # Проверяем остались ли контейнеры
+        local remaining_containers
+        remaining_containers=$(docker container ls -aq 2>/dev/null | wc -l)
+        
+        local result_message="✅ УДАЛЕНИЕ КОНТЕЙНЕРОВ ЗАВЕРШЕНО\n\n"
+        result_message+="📊 Результат:\n"
+        result_message+="• Удалено контейнеров: $success_count\n"
+        
+        if [[ "$remaining_containers" -eq 0 ]]; then
+            result_message+="• ✅ Все контейнеры удалены\n"
+            result_message+="• 🐳 Система Docker очищена\n"
+        else
+            result_message+="• ⚠️  Осталось контейнеров: $remaining_containers\n"
+            result_message+="• 🔧 Возможно требуются привилегии\n"
+        fi
+        
+        result_message+="\n🛑 Остановлены все сервисы:\n"
+        result_message+="• 🔍 Scanner агенты\n"
+        result_message+="• 🎒 Bags агенты\n"
+        result_message+="• 📹 StreamRecorder\n"
+        result_message+="• 🐳 Другие Docker контейнеры\n"
+        
+        show_message "🎯 Результат" "$result_message"
+        
+        # Обновляем статус StreamRecorder
+        STREAM_RECORDER_RUNNING="false"
+        
+        echo "✅ Удаление контейнеров завершено"
+        return 0
+    else
+        local error_msg
+        error_msg=$(tail -5 /tmp/docker_cleanup.log 2>/dev/null || echo "Неизвестная ошибка")
+        show_message "❌ Ошибка" "Не удалось удалить все контейнеры:\n\n$error_msg\n\nПопробуйте выполнить команду вручную:\n  docker container rm -f \$(docker container ls -aq)"
+        return 1
+    fi
+}
+
+# ============================================================================
 # ФУНКЦИИ ОСТАНОВКИ ВСЕХ АГЕНТОВ
 # ============================================================================
 
@@ -4426,7 +4491,8 @@ main_menu() {
             "5" "🔍 Диагностика и мониторинг" \
             "6" "📦 Получить релизы агентов аналитики" \
             "7" "📡 Проверка состояния API и сервисов" \
-            "8" "🚪 Выход")
+            "8" "🛑 Остановка и удаление всех Docker контейнеров" \
+            "9" "🚪 Выход")
         
         case "$choice" in
             "1") analytics_agents_management_menu ;;
@@ -4436,7 +4502,8 @@ main_menu() {
             "5") diagnostics_monitoring_menu ;;
             "6") get_agent_releases ;;
             "7") check_api_health ;;
-            "8") exit_screen ;;
+            "8") stop_all_docker_containers ;;
+            "9") exit_screen ;;
             *) break ;;
         esac
     done
@@ -4876,27 +4943,24 @@ system_monitoring_menu() {
     done
 }
 
+# УПРОЩЕННОЕ МЕНЮ УПРАВЛЕНИЯ ЛОГАМИ
 logs_management_menu() {
     while true; do
         local choice
-        choice=$(show_menu "📦 УПРАВЛЕНИЕ ЛОГОВ" "Сбор и управление логами системы\n\n📦 Архивы • 🗑️  Очистка • 📊 Статистика" \
+        choice=$(show_menu "📦 УПРАВЛЕНИЕ ЛОГАМИ" "Сбор и управление логами системы\n\n📦 Сбор • 📋 Просмотр • 🗑️  Очистка" \
             "1" "📦 Сбор логов контейнеров" \
             "2" "📋 Просмотр архивов логов" \
             "3" "🗑️  Очистка старых логов" \
             "4" "📊 Статистика логов" \
-            "5" "📋 Просмотр логов системы" \
-            "6" "🗑️  Очистка логов системы" \
-            "7" "⚙️  Настройки логов" \
+            "5" "⚙️  Настройки логов" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1") collect_logs_screen ;;
             "2") list_log_archives ;;
-            "3") cleanup_logs_screen ;;
+            "3") cleanup_old_logs ;;
             "4") show_logs_stats ;;
-            "5") tail_logs "100" ;;
-            "6") clear_stream_manager_logs ;;
-            "7") logs_configuration_screen ;;
+            "5") logs_configuration_screen ;;
             "0") break ;;
         esac
     done
@@ -5595,22 +5659,40 @@ show_config_files() {
                 show_message "❌ ОШИБКА" "Файл yucca.toml не найден"
             fi
             ;;
-        "0") ;;
+        "0") break ;;
     esac
 }
 
 logs_configuration_screen() {
     while true; do
         local choice
-        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n📁 Директория: $LOGS_DIR\n⏱️  Период по умолчанию: $DEFAULT_LOG_HOURS\n🗑️  Хранение: $LOG_RETENTION_DAYS дней" \
-            "1" "📁 Изменить директорию логов" \
-            "2" "⏱️  Изменить период по умолчанию" \
-            "3" "🗑️  Изменить период хранения" \
+        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n⏰ Период сбора: $DEFAULT_LOG_HOURS\n🗓️  Хранение: $LOG_RETENTION_DAYS дней\n📁 Директория: $LOGS_DIR" \
+            "1" "⏰ Изменить период сбора" \
+            "2" "🗓️  Изменить период хранения" \
+            "3" "📁 Изменить директорию" \
             "4" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1")
+                local new_hours
+                new_hours=$(show_input "⏰ ПЕРИОД СБОРА" "Введите период для сбора логов (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
+                if [[ -n "$new_hours" ]]; then
+                    DEFAULT_LOG_HOURS="$new_hours"
+                    save_logs_config
+                    show_message "✅ УСПЕХ" "⏰ Период сбора обновлен: $DEFAULT_LOG_HOURS"
+                fi
+                ;;
+            "2")
+                local new_days
+                new_days=$(show_input "🗓️  ПЕРИОД ХРАНЕНИЯ" "Введите количество дней хранения логов:" "$LOG_RETENTION_DAYS")
+                if [[ -n "$new_days" ]] && [[ "$new_days" =~ ^[0-9]+$ ]]; then
+                    LOG_RETENTION_DAYS="$new_days"
+                    save_logs_config
+                    show_message "✅ УСПЕХ" "🗓️  Период хранения обновлен: $LOG_RETENTION_DAYS дней"
+                fi
+                ;;
+            "3")
                 local new_dir
                 new_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите новую директорию для логов:" "$LOGS_DIR")
                 if [[ -n "$new_dir" ]]; then
@@ -5618,24 +5700,6 @@ logs_configuration_screen() {
                     mkdir -p "$LOGS_DIR"
                     save_logs_config
                     show_message "✅ УСПЕХ" "📁 Директория логов обновлена: $LOGS_DIR"
-                fi
-                ;;
-            "2")
-                local new_hours
-                new_hours=$(show_input "⏱️  ПЕРИОД ПО УМОЛЧАНИЮ" "Введите период по умолчанию (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
-                if [[ -n "$new_hours" ]]; then
-                    DEFAULT_LOG_HOURS="$new_hours"
-                    save_logs_config
-                    show_message "✅ УСПЕХ" "⏱️  Период по умолчанию обновлен: $DEFAULT_LOG_HOURS"
-                fi
-                ;;
-            "3")
-                local new_days
-                new_days=$(show_input "🗑️  ПЕРИОД ХРАНЕНИЯ" "Введите количество дней хранения логов:" "$LOG_RETENTION_DAYS")
-                if [[ -n "$new_days" ]] && [[ "$new_days" =~ ^[0-9]+$ ]]; then
-                    LOG_RETENTION_DAYS="$new_days"
-                    save_logs_config
-                    show_message "✅ УСПЕХ" "🗑️  Период хранения обновлен: $LOG_RETENTION_DAYS дней"
                 fi
                 ;;
             "4")
@@ -5651,27 +5715,18 @@ logs_configuration_screen() {
     done
 }
 
-cleanup_logs_screen() {
-    local days
-    days=$(show_input "🗑️  ОЧИСТКА СТАРЫХ ЛОГОВ" "Введите количество дней (логи старше этого срока будут удалены):" "$LOG_RETENTION_DAYS")
-    
-    if [[ -n "$days" ]] && [[ "$days" =~ ^[0-9]+$ ]]; then
-        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "Удалить все логи старше $days дней?\n\n📁 Директория: $LOGS_DIR\n\n⚠️  Это действие нельзя отменить!"; then
-            cleanup_old_logs "$days"
-        fi
-    else
-        show_message "❌ ОШИБКА" "Введите корректное количество дней"
-    fi
-}
+# ============================================================================
+# ФУНКЦИЯ ВЫХОДА
+# ============================================================================
 
 exit_screen() {
-    if show_yesno "🚪 ВЫХОД" "Вы уверены, что хотите выйти из системы управления?"; then
-        exit 0
+    if show_yesno "🚪 ВЫХОД" "Вы уверены, что хотите выйти?"; then
+        cleanup
     fi
 }
 
 # ============================================================================
-# ЗАПУСК СИСТЕМЫ
+# ЗАПУСК ПРОГРАММЫ
 # ============================================================================
 
 check_dependencies
