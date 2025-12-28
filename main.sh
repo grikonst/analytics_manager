@@ -1473,6 +1473,166 @@ show_scanner_status() {
     show_message "📊 Статус агента Scanner" "$status_info" 25 90
 }
 
+# ============================================================================
+# ФУНКЦИИ УПРАВЛЕНИЯ ЛОГАМИ SCANNER
+# ============================================================================
+
+collect_scanner_logs() {
+    local hours="$1"
+    local selected_instances="$2"
+    
+    echo "📦 Сбор логов Scanner за $hours"
+    
+    local timestamp
+    timestamp=$(date +"%Y%m%d_%H%M")
+    local date_dir
+    date_dir=$(date +"%Y-%m-%d")
+    local logs_date_dir="$LOGS_DIR/$date_dir"
+    mkdir -p "$logs_date_dir"
+    
+    local archive_name="scanner_logs_${timestamp}.tar.gz"
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    
+    mkdir -p "$temp_dir/scanner"
+    
+    local instances_to_collect=()
+    if [[ "$selected_instances" == "all" ]]; then
+        for ((i=1; i<=SCANNER_INSTANCES; i++)); do
+            instances_to_collect+=("luna-agent-scanner-$i")
+        done
+    else
+        IFS=',' read -ra instances_to_collect <<< "$selected_instances"
+    fi
+    
+    local total_instances=${#instances_to_collect[@]}
+    local processed=0
+    
+    # Создаем файл для объединенных логов
+    local scanner_all_log="$temp_dir/scanner/scanner_all.log"
+    echo "=== ОБЪЕДИНЕННЫЙ ЛОГ SCANNER ===" > "$scanner_all_log"
+    echo "Время сбора: $(date)" >> "$scanner_all_log"
+    echo "Период: $hours" >> "$scanner_all_log"
+    echo "=================================" >> "$scanner_all_log"
+    echo "" >> "$scanner_all_log"
+    
+    for instance in "${instances_to_collect[@]}"; do
+        ((processed++))
+        local percent=$((processed * 100 / total_instances))
+        
+        if [[ -n "$TUI_CMD" ]]; then
+            show_progress "📦 Сбор логов Scanner" "Сбор логов: $instance ($processed/$total_instances)" "$percent"
+        else
+            echo "📦 Сбор логов: $instance ($processed/$total_instances)"
+        fi
+        
+        local log_file="$temp_dir/scanner/${instance}.log"
+        
+        if docker ps -a 2>/dev/null | grep -q "$instance"; then
+            if docker logs --since "$hours" --timestamps "$instance" > "$log_file" 2>&1; then
+                echo "✅ Логи собраны для $instance"
+                # Добавляем в объединенный лог
+                echo "=== ЛОГ $instance ===" >> "$scanner_all_log"
+                echo "" >> "$scanner_all_log"
+                cat "$log_file" >> "$scanner_all_log"
+                echo "" >> "$scanner_all_log"
+                echo "=================================" >> "$scanner_all_log"
+                echo "" >> "$scanner_all_log"
+            else
+                echo "❌ Ошибка сбора логов для $instance"
+                echo "❌ Ошибка сбора логов для контейнера $instance" > "$log_file"
+            fi
+        else
+            echo "❌ Контейнер $instance не найден"
+            echo "❌ Контейнер $instance не найден или не запущен" > "$log_file"
+        fi
+    done
+    
+    if tar -czf "$LOGS_DIR/$archive_name" -C "$temp_dir" .; then
+        echo "✅ Архив логов Scanner создан: $archive_name"
+        rm -rf "$temp_dir"
+        
+        local archive_size
+        archive_size=$(du -h "$LOGS_DIR/$archive_name" 2>/dev/null | cut -f1 || echo "N/A")
+        local archive_info="✅ Архив логов Scanner успешно создан!\n\n"
+        archive_info+="📁 Имя файла: $archive_name\n"
+        archive_info+="📊 Размер: $archive_size\n"
+        archive_info+="⏱️  Период: $hours\n"
+        archive_info+="🔧 Инстансы: ${instances_to_collect[*]}\n"
+        archive_info+="📁 Путь: $LOGS_DIR/$archive_name"
+        
+        show_message "✅ Сбор логов Scanner завершен" "$archive_info"
+    else
+        echo "❌ Ошибка создания архива логов Scanner"
+        show_message "❌ Ошибка" "Не удалось создать архив логов Scanner"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+}
+
+collect_scanner_logs_screen() {
+    local hours
+    hours=$(show_input "📦 СБОР ЛОГОВ SCANNER" "Введите период для сбора логов (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
+    [[ -z "$hours" ]] && return
+    
+    local instances_options=()
+    
+    for ((i=1; i<=SCANNER_INSTANCES; i++)); do
+        instances_options+=("luna-agent-scanner-$i" "Scanner инстанс $i" "OFF")
+    done
+    
+    local selected_instances
+    selected_instances=$(show_checklist "📋 ВЫБОР ИНСТАНСОВ SCANNER" "Выберите инстансы Scanner для сбора логов:" "${instances_options[@]}")
+    
+    if [[ -n "$selected_instances" ]]; then
+        selected_instances=$(echo "$selected_instances" | sed 's/"//g')
+        
+        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "Собрать логи Scanner за период: $hours\n\n🔧 Инстансы:\n$selected_instances"; then
+            collect_scanner_logs "$hours" "$selected_instances"
+        fi
+    else
+        show_message "❌ ОТМЕНА" "Сбор логов Scanner отменен"
+    fi
+}
+
+view_scanner_logs() {
+    echo "📋 Просмотр логов Scanner..."
+    
+    local instances_options=()
+    local running_instances=0
+    
+    for ((i=1; i<=SCANNER_INSTANCES; i++)); do
+        local instance_name="luna-agent-scanner-$i"
+        if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "$instance_name"; then
+            instances_options+=("$instance_name" "Scanner инстанс $i (✅ запущен)")
+            ((running_instances++))
+        else
+            instances_options+=("$instance_name" "Scanner инстанс $i (❌ остановлен)")
+        fi
+    done
+    
+    if [[ $running_instances -eq 0 ]]; then
+        show_message "❌ Ошибка" "Нет запущенных инстансов Scanner"
+        return
+    fi
+    
+    local selected_instance
+    selected_instance=$(show_menu "📋 ВЫБОР ИНСТАНСА SCANNER" "Выберите инстанс Scanner для просмотра логов:" "${instances_options[@]}")
+    
+    if [[ -n "$selected_instance" ]]; then
+        if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "$selected_instance"; then
+            local lines
+            lines=$(show_input "📋 ПРОСМОТР ЛОГОВ" "Введите количество строк логов (по умолчанию 50):" "50")
+            [[ -z "$lines" ]] && lines=50
+            
+            docker logs --tail "$lines" "$selected_instance" 2>&1 | tee /tmp/scanner_logs.log
+            show_message "📋 Логи $selected_instance" "$(cat /tmp/scanner_logs.log)" 25 90
+        else
+            show_message "❌ Ошибка" "Инстанс $selected_instance не запущен"
+        fi
+    fi
+}
+
 run_migration() {
     echo "🔄 Запуск миграции базы данных конфигурации"
     
@@ -3257,171 +3417,10 @@ view_analysis_report() {
     show_message "📋 Просмотр отчета" "$(cat "$report_file")" 25 90
 }
 
-collect_logs() {
-    local hours="$1"
-    local selected_instances="$2"
-    
-    echo "📦 Сбор логов за $hours"
-    
-    local timestamp
-    timestamp=$(date +"%Y%m%d_%H%M")
-    local date_dir
-    date_dir=$(date +"%Y-%m-%d")
-    local logs_date_dir="$LOGS_DIR/$date_dir"
-    mkdir -p "$logs_date_dir"
-    
-    local archive_name="logs_${timestamp}.tar.gz"
-    local temp_dir
-    temp_dir=$(mktemp -d)
-    
-    # Создаем структуру директорий
-    mkdir -p "$temp_dir/scanner"
-    mkdir -p "$temp_dir/bags"
-    
-    local instances_to_collect=()
-    if [[ "$selected_instances" == "all" ]]; then
-        for ((i=1; i<=SCANNER_INSTANCES; i++)); do
-            instances_to_collect+=("luna-agent-scanner-$i")
-        done
-        for ((i=1; i<=BAGS_INSTANCES; i++)); do
-            instances_to_collect+=("luna-agent-bags-$i")
-        done
-        if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "recorder"; then
-            instances_to_collect+=("recorder")
-        fi
-    else
-        IFS=',' read -ra instances_to_collect <<< "$selected_instances"
-    fi
-    
-    local total_instances=${#instances_to_collect[@]}
-    local processed=0
-    local scanner_logs=()
-    local bags_logs=()
-    
-    # Создаем файлы для объединенных логов
-    local scanner_all_log="$temp_dir/scanner/scanner_all.log"
-    local bags_all_log="$temp_dir/bags/bags_all.log"
-    
-    echo "=== ОБЪЕДИНЕННЫЙ ЛОГ SCANNER ===" > "$scanner_all_log"
-    echo "Время сбора: $(date)" >> "$scanner_all_log"
-    echo "Период: $hours" >> "$scanner_all_log"
-    echo "=================================" >> "$scanner_all_log"
-    echo "" >> "$scanner_all_log"
-    
-    echo "=== ОБЪЕДИНЕННЫЙ ЛОГ BAGS ===" > "$bags_all_log"
-    echo "Время сбора: $(date)" >> "$bags_all_log"
-    echo "Период: $hours" >> "$bags_all_log"
-    echo "=================================" >> "$bags_all_log"
-    echo "" >> "$bags_all_log"
-    
-    for instance in "${instances_to_collect[@]}"; do
-        ((processed++))
-        local percent=$((processed * 100 / total_instances))
-        
-        if [[ -n "$TUI_CMD" ]]; then
-            show_progress "📦 Сбор логов" "Сбор логов: $instance ($processed/$total_instances)" "$percent"
-        else
-            echo "📦 Сбор логов: $instance ($processed/$total_instances)"
-        fi
-        
-        local log_file
-        if [[ "$instance" == *"scanner"* ]]; then
-            log_file="$temp_dir/scanner/${instance}.log"
-        else
-            log_file="$temp_dir/bags/${instance}.log"
-        fi
-        
-        if docker ps -a 2>/dev/null | grep -q "$instance"; then
-            if docker logs --since "$hours" --timestamps "$instance" > "$log_file" 2>&1; then
-                echo "✅ Логи собраны для $instance"
-            else
-                echo "❌ Ошибка сбора логов для $instance"
-                echo "❌ Ошибка сбора логов для контейнера $instance" > "$log_file"
-            fi
-        else
-            echo "❌ Контейнер $instance не найден"
-            echo "❌ Контейнер $instance не найден или не запущен" > "$log_file"
-        fi
-    done
-    
-    if tar -czf "$LOGS_DIR/$archive_name" -C "$temp_dir" .; then
-        echo "✅ Архив логов создан: $archive_name"
-        rm -rf "$temp_dir"
-        
-        local archive_size
-        archive_size=$(du -h "$LOGS_DIR/$archive_name" 2>/dev/null | cut -f1 || echo "N/A")
-        local archive_info="✅ Архив логов успешно создан!\n\n"
-        archive_info+="📁 Имя файла: $archive_name\n"
-        archive_info+="📊 Размер: $archive_size\n"
-        archive_info+="⏱️  Период: $hours\n"
-        archive_info+="🔧 Инстансы: ${instances_to_collect[*]}\n"
-        archive_info+="📁 Путь: $LOGS_DIR/$archive_name"
-        
-        show_message "✅ Сбор логов завершен" "$archive_info"
-    else
-        echo "❌ Ошибка создания архива логов"
-        show_message "❌ Ошибка" "Не удалось создать архив логов"
-        rm -rf "$temp_dir"
-        return 1
-    fi
-}
-
-collect_logs_screen() {
-    local hours
-    hours=$(show_input "📦 СБОР ЛОГОВ" "Введите период для сбора логов (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
-    [[ -z "$hours" ]] && return
-    
-    local instances_options=()
-    
-    for ((i=1; i<=SCANNER_INSTANCES; i++)); do
-        instances_options+=("luna-agent-scanner-$i" "Scanner инстанс $i" "OFF")
-    done
-    
-    for ((i=1; i<=BAGS_INSTANCES; i++)); do
-        instances_options+=("luna-agent-bags-$i" "Bags инстанс $i" "OFF")
-    done
-    
-    if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "recorder"; then
-        instances_options+=("recorder" "StreamRecorder" "OFF")
-    fi
-    
-    local selected_instances
-    selected_instances=$(show_checklist "📋 ВЫБОР ИНСТАНСОВ" "Выберите инстансы для сбора логов:" "${instances_options[@]}")
-    
-    if [[ -n "$selected_instances" ]]; then
-        selected_instances=$(echo "$selected_instances" | sed 's/"//g')
-        
-        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "Собрать логи за период: $hours\n\n🔧 Инстансы:\n$selected_instances"; then
-            collect_logs "$hours" "$selected_instances"
-        fi
-    else
-        show_message "❌ ОТМЕНА" "Сбор логов отменен"
-    fi
-}
-
-list_log_archives() {
-    mkdir -p "$LOGS_DIR"
-    local archives
-    archives=($(find "$LOGS_DIR" -name "*.tar.gz" -type f 2>/dev/null | sort -r))
-    
-    if [[ ${#archives[@]} -eq 0 ]]; then
-        show_message "ℹ️  Информация" "Архивы логов не найдены"
-        return
-    fi
-    
-    local archive_list=""
-    for archive in "${archives[@]}"; do
-        local archive_name archive_size archive_date
-        archive_name=$(basename "$archive")
-        archive_size=$(du -h "$archive" 2>/dev/null | cut -f1 || echo "N/A")
-        archive_date=$(stat -c %y "$archive" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
-        archive_list+="📁 $archive_name ($archive_size) - $archive_date\n"
-    done
-    
-    show_message "📦 Архивы логов (${#archives[@]})" "$archive_list" 20 80
-}
-
+# ============================================================================
 # УПРОЩЕННАЯ ФУНКЦИЯ ОЧИСТКИ ЛОГОВ
+# ============================================================================
+
 cleanup_old_logs() {
     echo "🗑️  Удаление старых логов"
     
@@ -4223,10 +4222,10 @@ show_bags_status() {
         if docker ps --format "table {{.Names}}\t{{.Status}}" 2>/dev/null | grep -q "$instance_name"; then
             local container_status
             container_status=$(docker ps --format "table {{.Names}}\t{{.Status}}" | grep "$instance_name" | awk '{print $2}')
-            status_info+="✅ $instance_name $device_info, порт:$bags_port - $container_status\n"
+            status_info+="✅ $instance_name ($device_info, порт:$bags_port) - $container_status\n"
             ((running_count++))
         else
-            status_info+="❌ $instance_name $device_info, порт:$bags_port - ОСТАНОВЛЕН\n"
+            status_info+="❌ $instance_name ($device_info, порт:$bags_port) - ОСТАНОВЛЕН\n"
         fi
     done
     
@@ -4312,6 +4311,166 @@ stop_bags_instances() {
     
     show_message "📊 Результат" "✅ Остановка завершена:\n\n✅ Успешно остановлено: $stopped_count\n📊 Всего контейнеров: $total_containers"
     echo "✅ Остановлено контейнера bags: $stopped_count из $total_containers"
+}
+
+# ============================================================================
+# ФУНКЦИИ УПРАВЛЕНИЯ ЛОГАМИ BAGS
+# ============================================================================
+
+collect_bags_logs() {
+    local hours="$1"
+    local selected_instances="$2"
+    
+    echo "📦 Сбор логов Bags за $hours"
+    
+    local timestamp
+    timestamp=$(date +"%Y%m%d_%H%M")
+    local date_dir
+    date_dir=$(date +"%Y-%m-%d")
+    local logs_date_dir="$LOGS_DIR/$date_dir"
+    mkdir -p "$logs_date_dir"
+    
+    local archive_name="bags_logs_${timestamp}.tar.gz"
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    
+    mkdir -p "$temp_dir/bags"
+    
+    local instances_to_collect=()
+    if [[ "$selected_instances" == "all" ]]; then
+        for ((i=1; i<=BAGS_INSTANCES; i++)); do
+            instances_to_collect+=("luna-agent-bags-$i")
+        done
+    else
+        IFS=',' read -ra instances_to_collect <<< "$selected_instances"
+    fi
+    
+    local total_instances=${#instances_to_collect[@]}
+    local processed=0
+    
+    # Создаем файл для объединенных логов
+    local bags_all_log="$temp_dir/bags/bags_all.log"
+    echo "=== ОБЪЕДИНЕННЫЙ ЛОГ BAGS ===" > "$bags_all_log"
+    echo "Время сбора: $(date)" >> "$bags_all_log"
+    echo "Период: $hours" >> "$bags_all_log"
+    echo "=================================" >> "$bags_all_log"
+    echo "" >> "$bags_all_log"
+    
+    for instance in "${instances_to_collect[@]}"; do
+        ((processed++))
+        local percent=$((processed * 100 / total_instances))
+        
+        if [[ -n "$TUI_CMD" ]]; then
+            show_progress "📦 Сбор логов Bags" "Сбор логов: $instance ($processed/$total_instances)" "$percent"
+        else
+            echo "📦 Сбор логов: $instance ($processed/$total_instances)"
+        fi
+        
+        local log_file="$temp_dir/bags/${instance}.log"
+        
+        if docker ps -a 2>/dev/null | grep -q "$instance"; then
+            if docker logs --since "$hours" --timestamps "$instance" > "$log_file" 2>&1; then
+                echo "✅ Логи собраны для $instance"
+                # Добавляем в объединенный лог
+                echo "=== ЛОГ $instance ===" >> "$bags_all_log"
+                echo "" >> "$bags_all_log"
+                cat "$log_file" >> "$bags_all_log"
+                echo "" >> "$bags_all_log"
+                echo "=================================" >> "$bags_all_log"
+                echo "" >> "$bags_all_log"
+            else
+                echo "❌ Ошибка сбора логов для $instance"
+                echo "❌ Ошибка сбора логов для контейнера $instance" > "$log_file"
+            fi
+        else
+            echo "❌ Контейнер $instance не найден"
+            echo "❌ Контейнер $instance не найден или не запущен" > "$log_file"
+        fi
+    done
+    
+    if tar -czf "$LOGS_DIR/$archive_name" -C "$temp_dir" .; then
+        echo "✅ Архив логов Bags создан: $archive_name"
+        rm -rf "$temp_dir"
+        
+        local archive_size
+        archive_size=$(du -h "$LOGS_DIR/$archive_name" 2>/dev/null | cut -f1 || echo "N/A")
+        local archive_info="✅ Архив логов Bags успешно создан!\n\n"
+        archive_info+="📁 Имя файла: $archive_name\n"
+        archive_info+="📊 Размер: $archive_size\n"
+        archive_info+="⏱️  Период: $hours\n"
+        archive_info+="🔧 Инстансы: ${instances_to_collect[*]}\n"
+        archive_info+="📁 Путь: $LOGS_DIR/$archive_name"
+        
+        show_message "✅ Сбор логов Bags завершен" "$archive_info"
+    else
+        echo "❌ Ошибка создания архива логов Bags"
+        show_message "❌ Ошибка" "Не удалось создать архив логов Bags"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+}
+
+collect_bags_logs_screen() {
+    local hours
+    hours=$(show_input "📦 СБОР ЛОГОВ BAGS" "Введите период для сбора логов (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
+    [[ -z "$hours" ]] && return
+    
+    local instances_options=()
+    
+    for ((i=1; i<=BAGS_INSTANCES; i++)); do
+        instances_options+=("luna-agent-bags-$i" "Bags инстанс $i" "OFF")
+    done
+    
+    local selected_instances
+    selected_instances=$(show_checklist "📋 ВЫБОР ИНСТАНСОВ BAGS" "Выберите инстансы Bags для сбора логов:" "${instances_options[@]}")
+    
+    if [[ -n "$selected_instances" ]]; then
+        selected_instances=$(echo "$selected_instances" | sed 's/"//g')
+        
+        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "Собрать логи Bags за период: $hours\n\n🔧 Инстансы:\n$selected_instances"; then
+            collect_bags_logs "$hours" "$selected_instances"
+        fi
+    else
+        show_message "❌ ОТМЕНА" "Сбор логов Bags отменен"
+    fi
+}
+
+view_bags_logs() {
+    echo "📋 Просмотр логов Bags..."
+    
+    local instances_options=()
+    local running_instances=0
+    
+    for ((i=1; i<=BAGS_INSTANCES; i++)); do
+        local instance_name="luna-agent-bags-$i"
+        if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "$instance_name"; then
+            instances_options+=("$instance_name" "Bags инстанс $i (✅ запущен)")
+            ((running_instances++))
+        else
+            instances_options+=("$instance_name" "Bags инстанс $i (❌ остановлен)")
+        fi
+    done
+    
+    if [[ $running_instances -eq 0 ]]; then
+        show_message "❌ Ошибка" "Нет запущенных инстансов Bags"
+        return
+    fi
+    
+    local selected_instance
+    selected_instance=$(show_menu "📋 ВЫБОР ИНСТАНСА BAGS" "Выберите инстанс Bags для просмотра логов:" "${instances_options[@]}")
+    
+    if [[ -n "$selected_instance" ]]; then
+        if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "$selected_instance"; then
+            local lines
+            lines=$(show_input "📋 ПРОСМОТР ЛОГОВ" "Введите количество строк логов (по умолчанию 50):" "50")
+            [[ -z "$lines" ]] && lines=50
+            
+            docker logs --tail "$lines" "$selected_instance" 2>&1 | tee /tmp/bags_logs.log
+            show_message "📋 Логи $selected_instance" "$(cat /tmp/bags_logs.log)" 25 90
+        else
+            show_message "❌ Ошибка" "Инстанс $selected_instance не запущен"
+        fi
+    fi
 }
 
 # ============================================================================
@@ -4513,10 +4672,8 @@ main_menu() {
             "3" "📹 Запуск записи потоков StreamRecorder" \
             "4" "⚙️  Конфигурация системы" \
             "5" "🔍 Диагностика и мониторинг" \
-            "6" "📦 Получить релизы агентов аналитики" \
-            "7" "📡 Проверка состояния API и сервисов" \
-            "8" "🛑 Остановка и удаление всех Docker контейнеров" \
-            "9" "🚪 Выход")
+            "6" "🛑 Остановка и удаление всех Docker контейнеров" \
+            "7" "🚪 Выход")
         
         case "$choice" in
             "1") analytics_agents_management_menu ;;
@@ -4524,10 +4681,8 @@ main_menu() {
             "3") stream_recorder_menu ;;
             "4") system_configuration_menu ;;
             "5") diagnostics_monitoring_menu ;;
-            "6") get_agent_releases ;;
-            "7") check_api_health ;;
-            "8") stop_all_docker_containers ;;
-            "9") exit_screen ;;
+            "6") stop_all_docker_containers ;;
+            "7") exit_screen ;;
             *) break ;;
         esac
     done
@@ -4536,18 +4691,20 @@ main_menu() {
 analytics_agents_management_menu() {
     while true; do
         local choice
-        choice=$(show_menu "🔍 УПРАВЛЕНИЕ АГЕНТАМИ АНАЛИТИКИ" "Управление всеми агентами видеоаналитики\n\n🔍 Scanner • 🎒 Bags • 🛑 Глобальная остановка" \
+        choice=$(show_menu "🔍 УПРАВЛЕНИЕ АГЕНТАМИ АНАЛИТИКИ" "Управление всеми агентами видеоаналитики\n\n🔍 Scanner • 🎒 Bags • 📦 Релизы • 🛑 Глобальная остановка" \
             "1" "🔍 Управление агентом Scanner" \
             "2" "🎒 Управление агентом Bags" \
-            "3" "🛑 Остановка и удаление всех агентов" \
-            "4" "📊 Статус всех агентов" \
+            "3" "📦 Получить релизы агентов аналитики" \
+            "4" "🛑 Остановка и удаление всех агентов" \
+            "5" "📊 Статус всех агентов" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1") scanner_management_menu ;;
             "2") bags_management_menu ;;
-            "3") stop_all_agents ;;
-            "4") show_all_agents_status ;;
+            "3") get_agent_releases ;;
+            "4") stop_all_agents ;;
+            "5") show_all_agents_status ;;
             "0") break ;;
         esac
     done
@@ -4619,6 +4776,52 @@ video_streams_management_menu() {
     done
 }
 
+scanner_management_menu() {
+    while true; do
+        local choice
+        choice=$(show_menu "🔍 УПРАВЛЕНИЕ LUNA-AGENT-SCANNER" "Управление инстансами сканера\n\n🚀 Запуск • 🛑 Остановка • 📊 Мониторинг • 📦 Логи" \
+            "1" "🚀 Запуск всех инстансов" \
+            "2" "🛑 Остановка всех инстансов" \
+            "3" "📊 Статус инстансов" \
+            "4" "⚙️  Конфигурация Scanner" \
+            "5" "📦 Управление логами Scanner" \
+            "6" "🔄 Принудительная миграция БД" \
+            "0" "🔙 Назад")
+        
+        case "$choice" in
+            "1") start_scanner_instances ;;
+            "2") stop_scanner_instances ;;
+            "3") show_scanner_status ;;
+            "4") scanner_configuration_screen ;;
+            "5") scanner_logs_menu ;;
+            "6") run_migration ;;
+            "0") break ;;
+        esac
+    done
+}
+
+scanner_logs_menu() {
+    while true; do
+        local choice
+        choice=$(show_menu "📦 УПРАВЛЕНИЕ ЛОГАМИ SCANNER" "Управление логами агента Scanner\n\n📦 Сбор • 📋 Просмотр • 🗑️  Очистка" \
+            "1" "📦 Сбор логов Scanner" \
+            "2" "📋 Просмотр логов Scanner" \
+            "3" "🗑️  Очистка старых логов" \
+            "4" "📊 Статистика логов" \
+            "5" "⚙️  Настройки логов" \
+            "0" "🔙 Назад")
+        
+        case "$choice" in
+            "1") collect_scanner_logs_screen ;;
+            "2") view_scanner_logs ;;
+            "3") cleanup_old_logs ;;
+            "4") show_logs_stats ;;
+            "5") logs_configuration_screen ;;
+            "0") break ;;
+        esac
+    done
+}
+
 bags_management_menu() {
     while true; do
         local choice
@@ -4627,7 +4830,8 @@ bags_management_menu() {
             "2" "🛑 Остановка всех инстансов" \
             "3" "📊 Статус инстансов" \
             "4" "⚙️  Конфигурация агента Bags" \
-            "5" "🔄 Принудительная миграция БД" \
+            "5" "📦 Управление логами Bags" \
+            "6" "🔄 Принудительная миграция БД" \
             "0" "🔙 Назад")
         
         case "$choice" in
@@ -4635,7 +4839,30 @@ bags_management_menu() {
             "2") stop_bags_instances ;;
             "3") show_bags_status ;;
             "4") bags_configuration_screen ;;
-            "5") run_bags_migration ;;
+            "5") bags_logs_menu ;;
+            "6") run_bags_migration ;;
+            "0") break ;;
+        esac
+    done
+}
+
+bags_logs_menu() {
+    while true; do
+        local choice
+        choice=$(show_menu "📦 УПРАВЛЕНИЕ ЛОГАМИ BAGS" "Управление логами агента Bags\n\n📦 Сбор • 📋 Просмотр • 🗑️  Очистка" \
+            "1" "📦 Сбор логов Bags" \
+            "2" "📋 Просмотр логов Bags" \
+            "3" "🗑️  Очистка старых логов" \
+            "4" "📊 Статистика логов" \
+            "5" "⚙️  Настройки логов" \
+            "0" "🔙 Назад")
+        
+        case "$choice" in
+            "1") collect_bags_logs_screen ;;
+            "2") view_bags_logs ;;
+            "3") cleanup_old_logs ;;
+            "4") show_logs_stats ;;
+            "5") logs_configuration_screen ;;
             "0") break ;;
         esac
     done
@@ -4666,24 +4893,24 @@ system_configuration_menu() {
 diagnostics_monitoring_menu() {
     while true; do
         local choice
-        choice=$(show_menu "🔍 ДИАГНОСТИКА И МОНИТОРИНГ" "Диагностика потоков и технические отчёты\n\n🔍 Анализ • 📊 Мониторинг • 📋 Отчеты" \
+        choice=$(show_menu "🔍 ДИАГНОСТИКА И МОНИТОРИНГ" "Диагностика потоков и технические отчёты\n\n🔍 Анализ • 📊 Мониторинг • 📋 Отчеты • 📡 Проверка API" \
             "1" "🔍 Диагностика видеопотоков камер" \
             "2" "📸 Получить кадры видеопотоков" \
             "3" "📊 Системный мониторинг" \
-            "4" "📦 Управление логами агентов" \
-            "5" "📊 Состояние системы" \
-            "6" "🎮 Состояние GPU" \
-            "7" "📋 Отчёт состояния ОС" \
+            "4" "📊 Состояние системы" \
+            "5" "🎮 Состояние GPU" \
+            "6" "📋 Отчёт состояния ОС" \
+            "7" "📡 Проверка состояния API и сервисов" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1") stream_analysis_menu ;;
             "2") recording_and_frames_menu ;;
             "3") system_monitoring_menu ;;
-            "4") logs_management_menu ;;
-            "5") check_system_health ;;
-            "6") check_gpu_health ;;
-            "7") generate_system_report ;;
+            "4") check_system_health ;;
+            "5") check_gpu_health ;;
+            "6") generate_system_report ;;
+            "7") check_api_health ;;
             "0") break ;;
         esac
     done
@@ -4700,26 +4927,6 @@ recording_and_frames_menu() {
         case "$choice" in
             "1") capture_frames_screen ;;
             "2") capture_single_frame_screen ;;
-            "0") break ;;
-        esac
-    done
-}
-
-scanner_management_menu() {
-    while true; do
-        local choice
-        choice=$(show_menu "🔍 УПРАВЛЕНИЕ LUNA-AGENT-SCANNER" "Управление инстансами сканера\n\n🚀 Запуск • 🛑 Остановка • 📊 Мониторинг" \
-            "1" "🚀 Запуск всех инстансов" \
-            "2" "🛑 Остановка всех инстансов" \
-            "3" "📊 Статус инстансов" \
-            "4" "⚙️  Конфигурация Scanner" \
-            "0" "🔙 Назад")
-        
-        case "$choice" in
-            "1") start_scanner_instances ;;
-            "2") stop_scanner_instances ;;
-            "3") show_scanner_status ;;
-            "4") scanner_configuration_screen ;;
             "0") break ;;
         esac
     done
@@ -4962,29 +5169,6 @@ system_monitoring_menu() {
         case "$choice" in
             "1") show_system_info ;;
             "2") generate_system_report ;;
-            "0") break ;;
-        esac
-    done
-}
-
-# УПРОЩЕННОЕ МЕНЮ УПРАВЛЕНИЯ ЛОГАМИ
-logs_management_menu() {
-    while true; do
-        local choice
-        choice=$(show_menu "📦 УПРАВЛЕНИЕ ЛОГАМИ" "Сбор и управление логами системы\n\n📦 Сбор • 📋 Просмотр • 🗑️  Очистка" \
-            "1" "📦 Сбор логов контейнеров" \
-            "2" "📋 Просмотр архивов логов" \
-            "3" "🗑️  Очистка старых логов" \
-            "4" "📊 Статистика логов" \
-            "5" "⚙️  Настройки логов" \
-            "0" "🔙 Назад")
-        
-        case "$choice" in
-            "1") collect_logs_screen ;;
-            "2") list_log_archives ;;
-            "3") cleanup_old_logs ;;
-            "4") show_logs_stats ;;
-            "5") logs_configuration_screen ;;
             "0") break ;;
         esac
     done
@@ -5272,7 +5456,7 @@ analyze_cameras_simple_screen() {
     cameras_file=$(show_input "🔍 БЫСТРАЯ ДИАГНОСТИКА" "Введите путь к файлу с камерами:" "$DEFAULT_CAMERAS_FILE")
     
     if [[ -n "$cameras_file" ]]; then
-        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "🔍 Запустить быструю диагностику видеопотоков из файла:\n$cameras_file?"; then
+        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "🔍 Запустить быструю диагностика видеопотоков из файла:\n$cameras_file?"; then
             analyze_cameras_from_file "$cameras_file"
         fi
     fi
@@ -5443,11 +5627,10 @@ system_settings_screen() {
                 ;;
             "4")
                 if show_yesno "🔄 СБРОС НАСТРОЕК" "Сбросить основные настройки к значениям по умолчанию?"; then
-                    HOST_IP="$DEFAULT_HOST_IP"
-                    API_URL="$DEFAULT_API_URL"
-                    ACCOUNT_ID="$DEFAULT_ACCOUNT_ID"
                     save_config
-                    show_message "✅ УСПЕХ" "⚙️  Основные настройки сброшены"
+                    # shellcheck source=/dev/null
+                    source "$CONFIG_FILE"
+                    show_message "✅ УСПЕХ" "Настройки восстановлены"
                 fi
                 ;;
             "0") break ;;
@@ -5458,121 +5641,186 @@ system_settings_screen() {
 template_management_screen() {
     while true; do
         local analytics_status=""
-        [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🔫 Оружие: ✅ "
-        [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🥊 Драки: ✅ "
-        [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🔥 Пожар: ✅ "
-        [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="👥 Подсчёт людей: ✅ "
-        [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🎭 Балаклавы: ✅ "
-        [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🎒 Сумки: ✅ "
-        [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="✋ Поднятые руки: ✅ "
-        [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🛌 Лежачие: ✅ "
+        
+        if [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]]; then
+            analytics_status+="🔫 Оружие: ✅\n"
+        else
+            analytics_status+="🔫 Оружие: ❌\n"
+        fi
+        
+        if [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]]; then
+            analytics_status+="🥊 Драки: ✅\n"
+        else
+            analytics_status+="🥊 Драки: ❌\n"
+        fi
+        
+        if [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]]; then
+            analytics_status+="🔥 Огонь: ✅\n"
+        else
+            analytics_status+="🔥 Огонь: ❌\n"
+        fi
+        
+        if [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]]; then
+            analytics_status+="👥 Подсчёт людей: ✅\n"
+        else
+            analytics_status+="👥 Подсчёт людей: ❌\n"
+        fi
+        
+        if [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]]; then
+            analytics_status+="😷 Балаклавы: ✅\n"
+        else
+            analytics_status+="😷 Балаклавы: ❌\n"
+        fi
+        
+        if [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]]; then
+            analytics_status+="🎒 Оставленные вещи: ✅\n"
+        else
+            analytics_status+="🎒 Оставленные вещи: ❌\n"
+        fi
+        
+        if [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]]; then
+            analytics_status+="✋ Поднятые руки: ✅\n"
+        else
+            analytics_status+="✋ Поднятые руки: ❌\n"
+        fi
+        
+        if [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]]; then
+            analytics_status+="💤 Лежачие: ✅\n"
+        else
+            analytics_status+="💤 Лежачие: ❌\n"
+        fi
         
         local choice
-        choice=$(show_menu "📋 ШАБЛОН КОНФИГУРАЦИИ АНАЛИТИки" "Текущие настройки аналитики:\n$analytics_status" \
+        choice=$(show_menu "📋 УПРАВЛЕНИЕ ШАБЛОНОМ АНАЛИТИКИ" "Текущие настройки аналитики:\n$analytics_status" \
             "1" "🔫 Оружие: $([[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
             "2" "🥊 Драки: $([[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "3" "🔥 Пожар: $([[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
+            "3" "🔥 Огонь: $([[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
             "4" "👥 Подсчёт людей: $([[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "5" "🎭 Балаклавы: $([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "6" "🎒 Сумки: $([[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
+            "5" "😷 Балаклавы: $([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
+            "6" "🎒 Оставленные вещи: $([[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
             "7" "✋ Поднятые руки: $([[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "8" "🛌 Лежачие: $([[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "9" "🔄 Обновить шаблон" \
-            "10" "🔄 Сбросить настройки" \
+            "8" "💤 Лежачие: $([[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
+            "9" "📝 Редактировать шаблон" \
+            "10" "🔄 Сбросить шаблон" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1")
                 if [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]]; then
                     WEAPON_ANALYTICS_ENABLED="false"
+                    show_message "🔫 ОРУЖИЕ" "🔫 Аналитика оружия отключена"
                 else
                     WEAPON_ANALYTICS_ENABLED="true"
+                    show_message "🔫 ОРУЖИЕ" "🔫 Аналитика оружия включена"
                 fi
                 save_template_config
                 create_default_template
-                show_message "🔫 Аналитика 'Оружие'" "$([[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && echo "✅ Включена" || echo "❌ Выключена")"
                 ;;
             "2")
                 if [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]]; then
                     FIGHTS_ANALYTICS_ENABLED="false"
+                    show_message "🥊 ДРАКИ" "🥊 Аналитика драк отключена"
                 else
                     FIGHTS_ANALYTICS_ENABLED="true"
+                    show_message "🥊 ДРАКИ" "🥊 Аналитика драк включена"
                 fi
                 save_template_config
                 create_default_template
-                show_message "🥊 Аналитика 'Драки'" "$([[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && echo "✅ Включена" || echo "❌ Выключена")"
                 ;;
             "3")
                 if [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]]; then
                     FIRE_ANALYTICS_ENABLED="false"
+                    show_message "🔥 ПОЖАР" "🔥 Аналитика пожара отключена"
                 else
                     FIRE_ANALYTICS_ENABLED="true"
+                    show_message "🔥 ПОЖАР" "🔥 Аналитика пожара включена"
                 fi
                 save_template_config
                 create_default_template
-                show_message "🔥 Аналитика 'Пожар'" "$([[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && echo "✅ Включена" || echo "❌ Выключена")"
                 ;;
             "4")
                 if [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]]; then
                     PEOPLE_ANALYTICS_ENABLED="false"
+                    show_message "👥 ЛЮДИ" "👥 Аналитика людей отключена"
                 else
                     PEOPLE_ANALYTICS_ENABLED="true"
+                    show_message "👥 ЛЮДИ" "👥 Аналитика людей включена"
                 fi
                 save_template_config
                 create_default_template
-                show_message "👥 Аналитика 'Подсчёт людей'" "$([[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && echo "✅ Включена" || echo "❌ Выключена")"
                 ;;
             "5")
                 if [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]]; then
                     FACECOVER_ANALYTICS_ENABLED="false"
+                    show_message "😷 МАСКИ" "😷 Аналитика масок отключена"
                 else
                     FACECOVER_ANALYTICS_ENABLED="true"
+                    show_message "😷 МАСКИ" "😷 Аналитика масок включена"
                 fi
                 save_template_config
                 create_default_template
-                show_message "🎭 Аналитика 'Балаклавы'" "$([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "✅ Включена" || echo "❌ Выключена")"
                 ;;
             "6")
                 if [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]]; then
                     BAGS_ANALYTICS_ENABLED="false"
+                    show_message "🎒 СУМКИ" "🎒 Аналитика сумок отключена"
                 else
                     BAGS_ANALYTICS_ENABLED="true"
+                    show_message "🎒 СУМКИ" "🎒 Аналитика сумок включена"
                 fi
                 save_template_config
                 create_default_template
-                show_message "🎒 Аналитика 'Сумки'" "$([[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && echo "✅ Включена" || echo "❌ Выключена")"
                 ;;
             "7")
                 if [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]]; then
                     HANDSUP_ANALYTICS_ENABLED="false"
+                    show_message "✋ РУКИ" "✋ Аналитика поднятых рук отключена"
                 else
                     HANDSUP_ANALYTICS_ENABLED="true"
+                    show_message "✋ РУКИ" "✋ Аналитика поднятых рук включена"
                 fi
                 save_template_config
                 create_default_template
-                show_message "✋ Аналитика 'Поднятые руки'" "$([[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && echo "✅ Включена" || echo "❌ Выключена")"
                 ;;
             "8")
                 if [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]]; then
                     LYINGDOWN_ANALYTICS_ENABLED="false"
+                    show_message "💤 ЛЕЖАЧИЕ" "💤 Аналитика лежачих людей отключена"
                 else
                     LYINGDOWN_ANALYTICS_ENABLED="true"
+                    show_message "💤 ЛЕЖАЧИЕ" "💤 Аналитика лежачих людей включена"
                 fi
                 save_template_config
                 create_default_template
-                show_message "🛌 Аналитика 'Лежачие люди'" "$([[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && echo "✅ Включена" || echo "❌ Выключена")"
                 ;;
             "9")
-                create_default_template
-                show_message "✅ ШАБЛОН ОБНОВЛЕН" "📋 Шаблон конфигурации аналитики успешно обновлен"
+                if [[ -f "$TEMPLATE_FILE" ]]; then
+                    local editor="${EDITOR:-nano}"
+                    if command -v "$editor" &> /dev/null; then
+                        $editor "$TEMPLATE_FILE"
+                        if jq empty "$TEMPLATE_FILE" 2>/dev/null; then
+                            show_message "✅ УСПЕХ" "Шаблон успешно отредактирован"
+                        else
+                            show_message "❌ ОШИБКА" "Неверный JSON в шаблоне"
+                            if show_yesno "❌ ОШИБКА" "В шаблоне невалидный JSON. Восстановить стандартный шаблон?"; then
+                                create_default_template
+                                show_message "✅ УСПЕХ" "Шаблон восстановлен"
+                            fi
+                        fi
+                    else
+                        show_message "❌ ОШИБКА" "Текстовый редактор $editor не найден"
+                    fi
+                else
+                    show_message "❌ ОШИБКА" "Файл шаблона не найден"
+                fi
                 ;;
             "10")
-                if show_yesno "🔄 СБРОС НАСТРОЕК" "Сбросить настройки шаблона к значениям по умолчанию?"; then
+                if show_yesno "🔄 СБРОС ШАБЛОНА" "Сбросить шаблон к значениям по умолчанию?"; then
                     create_default_template_config
+                    create_default_template
                     # shellcheck source=/dev/null
                     source "$TEMPLATE_CONFIG_FILE"
-                    create_default_template
-                    show_message "✅ УСПЕХ" "Настройки шаблона сброшены"
+                    show_message "✅ УСПЕХ" "Шаблон сброшен"
                 fi
                 ;;
             "0") break ;;
@@ -5580,121 +5828,23 @@ template_management_screen() {
     done
 }
 
-show_config_files() {
-    local config_list="📁 Список файлов конфигурации:\n\n"
-    local config_files=(
-        "$CONFIG_FILE"
-        "$TEMPLATE_CONFIG_FILE"
-        "$SCANNER_CONFIG_FILE"
-        "$BAGS_CONFIG_FILE"
-        "$ANALYSIS_CONFIG_FILE"
-        "$LOGS_CONFIG_FILE"
-        "$TEMPLATE_FILE"
-        "$RECORDER_CONFIG_FILE"
-        "$YUCCA_CONFIG_FILE"
-    )
-    
-    for file in "${config_files[@]}"; do
-        if [[ -f "$file" ]]; then
-            local file_size
-            file_size=$(du -h "$file" 2>/dev/null | cut -f1 || echo "N/A")
-            config_list+="📄 $(basename "$file") ($file_size)\n"
-        else
-            config_list+="❌ $(basename "$file") - ОТСУТСТВУЕТ\n"
-        fi
-    done
-    
-    config_list+="\n📋 Выберите файл для просмотра:"
-    
-    local choice
-    choice=$(show_menu "📁 ФАЙЛЫ КОНФИГУРАЦИИ" "$config_list" \
-        "1" "⚙️  Основная конфигурация" \
-        "2" "📋 Конфигурация шаблона" \
-        "3" "🔍 Конфигурация агента Scanner" \
-        "4" "🎒 Конфигурация агента Bags" \
-        "5" "⚙️ Конфигурация диагностики" \
-        "6" "📦 Конфигурация логов" \
-        "7" "📋 Шаблон аналитики" \
-        "8" "📹 Конфигурация StreamRecorder" \
-        "0" "🔙 Назад")
-    
-    case "$choice" in
-        "1")
-            if [[ -f "$CONFIG_FILE" ]]; then
-                show_message "⚙️  ОСНОВНАЯ КОНФИГУРАЦИЯ" "$(cat "$CONFIG_FILE")"
-            else
-                show_message "❌ ОШИБКА" "Файл конфигурации не найден"
-            fi
-            ;;
-        "2")
-            if [[ -f "$TEMPLATE_CONFIG_FILE" ]]; then
-                show_message "📋 КОНФИГУРАЦИЯ ШАБЛОНА" "$(cat "$TEMPLATE_CONFIG_FILE")"
-            else
-                show_message "❌ ОШИБКА" "Файл конфигурации шаблона не найден"
-            fi
-            ;;
-        "3")
-            if [[ -f "$SCANNER_CONFIG_FILE" ]]; then
-                show_message "🔍 КОНФИГУРАЦИЯ SCANNER" "$(cat "$SCANNER_CONFIG_FILE")"
-            else
-                show_message "❌ ОШИБКА" "Файл конфигурации Scanner не найден"
-            fi
-            ;;
-        "4")
-            if [[ -f "$BAGS_CONFIG_FILE" ]]; then
-                show_message "🎒 КОНФИГУРАЦИЯ BAGS" "$(cat "$BAGS_CONFIG_FILE")"
-            else
-                show_message "❌ ОШИБКА" "Файл конфигурации Bags не найден"
-            fi
-            ;;
-        "5")
-            if [[ -f "$ANALYSIS_CONFIG_FILE" ]]; then
-                show_message "⚙️  КОНФИГУРАЦИЯ ДИАГНОСТИКИ" "$(cat "$ANALYSIS_CONFIG_FILE")"
-            else
-                show_message "❌ ОШИБКА" "Файл конфигурации диагностики не найден"
-            fi
-            ;;
-        "6")
-            if [[ -f "$LOGS_CONFIG_FILE" ]]; then
-                show_message "📦 КОНФИГУРАЦИЯ ЛОГОВ" "$(cat "$LOGS_CONFIG_FILE")"
-            else
-                show_message "❌ ОШИБКА" "Файл конфигурации логов не найден"
-            fi
-            ;;
-        "7")
-            if [[ -f "$TEMPLATE_FILE" ]]; then
-                show_message "📋 ШАБЛОН АНАЛИТИКИ" "$(cat "$TEMPLATE_FILE")" 25 90
-            else
-                show_message "❌ ОШИБКА" "Файл шаблона аналитики не найден"
-            fi
-            ;;
-        "8")
-            if [[ -f "$RECORDER_CONFIG_FILE" ]]; then
-                show_message "📹 КОНФИГУРАЦИЯ STREAMRECORDER" "$(cat "$RECORDER_CONFIG_FILE")" 25 90
-            else
-                show_message "❌ ОШИБКА" "Файл конфигурации StreamRecorder не найден"
-            fi
-            ;;
-        "0") ;;
-    esac
-}
-
 logs_configuration_screen() {
     while true; do
         local choice
-        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n📁 Директория: $LOGS_DIR\n⏱️  Период сбора: $DEFAULT_LOG_HOURS\n🗑️  Хранение: $LOG_RETENTION_DAYS дней" \
+        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n📁 Директория: $LOGS_DIR\n⏱️  Период сбора: $DEFAULT_LOG_HOURS\n📅 Хранение: $LOG_RETENTION_DAYS дней" \
             "1" "📁 Изменить директорию логов" \
-            "2" "⏱️  Изменить период сбора" \
-            "3" "🗑️  Изменить период хранения" \
+            "2" "⏱️ Изменить период сбора" \
+            "3" "📅 Изменить период хранения" \
             "4" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1")
-                local new_dir
-                new_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите новую директорию логов:" "$LOGS_DIR")
-                if [[ -n "$new_dir" ]]; then
-                    LOGS_DIR="$new_dir"
+                local new_logs_dir
+                new_logs_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите новую директорию для логов:" "$LOGS_DIR")
+                if [[ -n "$new_logs_dir" ]]; then
+                    LOGS_DIR="$new_logs_dir"
+                    mkdir -p "$LOGS_DIR"
                     save_logs_config
                     show_message "✅ УСПЕХ" "📁 Директория логов обновлена: $LOGS_DIR"
                 fi
@@ -5710,11 +5860,11 @@ logs_configuration_screen() {
                 ;;
             "3")
                 local new_days
-                new_days=$(show_input "🗑️  ПЕРИОД ХРАНЕНИЯ" "Введите период хранения логов в днях:" "$LOG_RETENTION_DAYS")
-                if [[ -n "$new_days" ]] && [[ "$new_days" =~ ^[0-9]+$ ]]; then
+                new_days=$(show_input "📅 ХРАНЕНИЕ ЛОГОВ" "Введите количество дней хранения логов:" "$LOG_RETENTION_DAYS")
+                if [[ -n "$new_days" && "$new_days" =~ ^[0-9]+$ ]]; then
                     LOG_RETENTION_DAYS="$new_days"
                     save_logs_config
-                    show_message "✅ УСПЕХ" "🗑️  Период хранения обновлен: $LOG_RETENTION_DAYS дней"
+                    show_message "✅ УСПЕХ" "📅 Период хранения обновлен: $LOG_RETENTION_DAYS дней"
                 else
                     show_message "❌ ОШИБКА" "Введите корректное число дней"
                 fi
@@ -5724,7 +5874,7 @@ logs_configuration_screen() {
                     create_default_logs_config
                     # shellcheck source=/dev/null
                     source "$LOGS_CONFIG_FILE"
-                    show_message "✅ УСПЕХ" "Настройки логов сброшены"
+                    show_message "✅ УСПЕХ" "Настройки логов восстановлены"
                 fi
                 ;;
             "0") break ;;
@@ -5732,12 +5882,48 @@ logs_configuration_screen() {
     done
 }
 
-# ============================================================================
-# ФУНКЦИИ ВЫХОДА И ЗАПУСКА
-# ============================================================================
+show_config_files() {
+    local config_files=""
+    
+    if [[ -f "$CONFIG_FILE" ]]; then
+        config_files+="⚙️  Основные настройки ($CONFIG_FILE):\n"
+        config_files+="$(cat "$CONFIG_FILE")\n\n"
+    fi
+    
+    if [[ -f "$TEMPLATE_CONFIG_FILE" ]]; then
+        config_files+="📋 Шаблон аналитики ($TEMPLATE_CONFIG_FILE):\n"
+        config_files+="$(cat "$TEMPLATE_CONFIG_FILE")\n\n"
+    fi
+    
+    if [[ -f "$SCANNER_CONFIG_FILE" ]]; then
+        config_files+="🔍 Scanner ($SCANNER_CONFIG_FILE):\n"
+        config_files+="$(cat "$SCANNER_CONFIG_FILE")\n\n"
+    fi
+    
+    if [[ -f "$BAGS_CONFIG_FILE" ]]; then
+        config_files+="🎒 Bags ($BAGS_CONFIG_FILE):\n"
+        config_files+="$(cat "$BAGS_CONFIG_FILE")\n\n"
+    fi
+    
+    if [[ -f "$ANALYSIS_CONFIG_FILE" ]]; then
+        config_files+="🔍 Диагностика ($ANALYSIS_CONFIG_FILE):\n"
+        config_files+="$(cat "$ANALYSIS_CONFIG_FILE")\n\n"
+    fi
+    
+    if [[ -f "$LOGS_CONFIG_FILE" ]]; then
+        config_files+="📦 Логи ($LOGS_CONFIG_FILE):\n"
+        config_files+="$(cat "$LOGS_CONFIG_FILE")\n"
+    fi
+    
+    if [[ -z "$config_files" ]]; then
+        show_message "📂 ФАЙЛЫ КОНФИГУРАЦИИ" "Файлы конфигурации не найдены"
+    else
+        show_message "📂 ФАЙЛЫ КОНФИГУРАЦИИ" "$config_files" 30 90
+    fi
+}
 
 exit_screen() {
-    if show_yesno "🚪 ВЫХОД" "Вы уверены, что хотите выйти из системы управления?"; then
+    if show_yesno "🚪 ВЫХОД" "Вы уверены, что хотите выйти из системы?"; then
         exit 0
     fi
 }
@@ -5752,8 +5938,8 @@ check_dependencies
 # Инициализируем систему
 init
 
-# Показываем информацию о системе
+# Показываем информационный экран
 show_system_info_splash
 
-# Запускаем основное меню
+# Запускаем главное меню
 main_menu
