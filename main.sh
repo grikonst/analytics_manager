@@ -93,7 +93,7 @@ DEFAULT_CAMS_LIST="$CAMS_LIST_DIR/cams.list"
 DEFAULT_RECORDER_PORT_WEB="9910"
 DEFAULT_RECORDER_PORT_TELEMETRY="9912"
 DEFAULT_RECORDER_PORT_SMTP="1025"
-DEFAULT_RECORDER_IMAGE="yuccastream/yucca:latest-ent"
+DEFAULT_RECORDER_IMAGE="yuccastream/yucca:latest"
 DEFAULT_RECORDER_DATA_DIR="$RECORDER_DIR/yucca_data"
 DEFAULT_RECORDER_FFMPEG_DIR="$RECORDER_DIR/yucca_ffmpeg"
 
@@ -291,7 +291,7 @@ TEMPLATE_BAGS_ANALYTICS='{
   "parameters": {
     "parameters": {
       "event_policy": {
-        "trigger": "end"
+        "trigger": "start"
       },
       "image_retain_policy": {
         "mimetype": "JPEG",
@@ -487,7 +487,7 @@ networks:
 
 services:
   recorder:
-    image: yuccastream/yucca:latest-ent
+    image: yuccastream/yucca:latest
     container_name: recorder
     restart: always
     shm_size: "512mb"
@@ -548,7 +548,7 @@ EOF
 }
 
 start_stream_recorder() {
-    echo "🚀 Запуск StreamRecorder (Yucca)..."
+    echo "🚀 Запуск StreamRecorder..."
     
     # Проверяем, запущен ли уже recorder
     if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "recorder"; then
@@ -581,12 +581,10 @@ start_stream_recorder() {
             local result_message="✅ STREAMRECORDER УСПЕШНО ЗАПУЩЕН!\n\n"
             result_message+="📊 Статус: $container_status\n"
             result_message+="🌐 Веб-интерфейс: $web_url\n"
-            result_message+="🔧 Телеметрия: ${HOST_IP}:${DEFAULT_RECORDER_PORT_TELEMETRY}\n"
-            result_message+="📨 SMTP сервер: ${HOST_IP}:${DEFAULT_RECORDER_PORT_SMTP}\n\n"
             result_message+="📁 Директория конфигурации: $RECORDER_DIR\n"
             result_message+="📁 Данные: $DEFAULT_RECORDER_DATA_DIR\n\n"
             result_message+="💡 Для входа в веб-интерфейс откройте в браузере:\n$web_url\n\n"
-            result_message+="🚀 StreamRecorder готов к записи видеопотоков!"
+            result_message+="🚀 StreamRecorder готов, перейдите в веб-интерфейс, добавить видеопотоки"
             
             show_message "🎉 StreamRecorder запущен" "$result_message" 25 90
             echo "✅ StreamRecorder запущен. Веб-интерфейс доступен по адресу: $web_url"
@@ -2108,6 +2106,7 @@ show_radiolist() {
 get_streams_list() {
     local force_refresh="$1"
     local response
+    local error_file
     
     # Если требуется обновить кэш или кэш устарел
     local current_time=$(date +%s)
@@ -2121,14 +2120,24 @@ get_streams_list() {
             --header "luna-account-id: $ACCOUNT_ID" \
             "${API_URL}?page_size=1000" 2>/dev/null)
         
-        if [[ $? -ne 0 ]] || [[ -z "$response" ]]; then
-            echo "❌ Ошибка при запросе к API"
+        local curl_exit_code=$?
+        
+        if [[ $curl_exit_code -ne 0 ]] || [[ -z "$response" ]]; then
+            echo "❌ Ошибка при запросе к API (curl exit code: $curl_exit_code)"
             return 1
         fi
         
         # Проверяем валидность JSON
         if ! echo "$response" | jq empty 2>/dev/null; then
             echo "❌ Ответ API не является валидным JSON"
+            echo "Ответ API: $response"
+            return 1
+        fi
+        
+        # Проверяем, есть ли данные в ответе
+        if ! echo "$response" | jq -e '.streams' >/dev/null 2>&1 && ! echo "$response" | jq -e '.[]' >/dev/null 2>&1; then
+            echo "❌ В ответе API отсутствуют данные о потоках"
+            echo "Ответ API: $response"
             return 1
         fi
         
@@ -2142,17 +2151,21 @@ get_streams_list() {
     
     # Извлекаем потоки из ответа
     local streams=()
+    local stream_ids=()
     
     # Пробуем разные форматы ответа
-    local stream_ids=$(echo "$response" | jq -r '.streams[]?.stream_id' 2>/dev/null)
-    
-    if [[ -z "$stream_ids" ]]; then
-        stream_ids=$(echo "$response" | jq -r '.[]?.stream_id' 2>/dev/null)
+    if echo "$response" | jq -e '.streams' >/dev/null 2>&1; then
+        stream_ids=$(echo "$response" | jq -r '.streams[]?.stream_id // empty' 2>/dev/null)
+    elif echo "$response" | jq -e '.[]' >/dev/null 2>&1; then
+        stream_ids=$(echo "$response" | jq -r '.[]?.stream_id // empty' 2>/dev/null)
+    else
+        echo "❌ Не удалось определить структуру ответа API"
+        return 1
     fi
     
     if [[ -z "$stream_ids" ]]; then
-        echo "❌ Не удалось извлечь stream_id из ответа"
-        return 1
+        echo "ℹ️ Потоки не найдены"
+        return 0
     fi
     
     # Получаем информацию о каждом потоке
@@ -2160,21 +2173,26 @@ get_streams_list() {
         [[ -z "$stream_id" ]] && continue
         
         # Получаем информацию о потоке
-        local stream_info=$(echo "$response" | jq -r --arg id "$stream_id" \
-            '.streams[]? | select(.stream_id==$id) | {name: .name, status: .status}' 2>/dev/null)
+        local stream_info stream_name stream_status
         
-        if [[ -z "$stream_info" ]] || [[ "$stream_info" == "null" ]]; then
+        if echo "$response" | jq -e '.streams' >/dev/null 2>&1; then
             stream_info=$(echo "$response" | jq -r --arg id "$stream_id" \
-                '.[]? | select(.stream_id==$id) | {name: .name, status: .status}' 2>/dev/null)
+                '.streams[] | select(.stream_id==$id) | {name: .name, status: .status}' 2>/dev/null)
+        else
+            stream_info=$(echo "$response" | jq -r --arg id "$stream_id" \
+                '.[] | select(.stream_id==$id) | {name: .name, status: .status}' 2>/dev/null)
         fi
         
-        local stream_name stream_status
         if [[ -n "$stream_info" ]] && [[ "$stream_info" != "null" ]]; then
-            stream_name=$(echo "$stream_info" | jq -r '.name // "Без имени"' 2>/dev/null)
+            stream_name=$(echo "$stream_info" | jq -r '.name // ""' 2>/dev/null)
             stream_status=$(echo "$stream_info" | jq -r '.status // "0"' 2>/dev/null)
         else
             stream_name="Поток $stream_id"
             stream_status="0"
+        fi
+        
+        if [[ -z "$stream_name" ]]; then
+            stream_name="Поток $stream_id"
         fi
         
         local status_display=$(get_stream_status_display "$stream_status")
@@ -2189,8 +2207,8 @@ get_streams_list() {
     done <<< "$stream_ids"
     
     if [[ ${#streams[@]} -eq 0 ]]; then
-        echo "❌ Потоки не найдены"
-        return 1
+        echo "ℹ️ Потоки не найдены"
+        return 0
     fi
     
     printf '%s\n' "${streams[@]}"
@@ -2218,9 +2236,15 @@ select_streams_dialog() {
     # Получаем список потоков
     local streams_output
     streams_output=$(get_streams_list "force")
+    local ret_code=$?
     
-    if [[ $? -ne 0 ]] || [[ -z "$streams_output" ]]; then
-        show_message "❌ Ошибка" "Не удалось получить список видеопотоков\n\nПроверьте:\n• Доступность API\n• Сетевые настройки\n• Account ID"
+    if [[ $ret_code -ne 0 ]]; then
+        show_message "❌ Ошибка" "Не удалось получить список видеопотоков\n\nПроверьте:\n• Доступность API ($API_URL)\n• Сетевые настройки\n• Account ID: $ACCOUNT_ID\n• Запущен ли сервис Luna"
+        return 1
+    fi
+    
+    if [[ -z "$streams_output" ]]; then
+        show_message "ℹ️  Информация" "Видеопотоки не найдены"
         return 1
     fi
     
@@ -3651,7 +3675,7 @@ check_api_health() {
     # 2. Проверка счетчика потоков
     detailed_report+="\n2. 🔢 СЧЕТЧИК ПОТОКОВ\n"
     local count_response
-    count_response=$(curl -s --connect-timeout 5 "http://${HOST_IP}:5230/2/streams/count?statuses=1" 2>/dev/null || echo '{"count": 0}')
+    count_response=$(curl -s --max-time 10 --connect-timeout 5 "http://${HOST_IP}:5230/2/streams/count?statuses=1" 2>/dev/null || echo '{"count": 0}')
     
     if [[ $? -eq 0 ]]; then
         local active_count
@@ -5093,7 +5117,7 @@ scanner_configuration_screen() {
             "1" "🏷️  Изменить Tag" \
             "2" "📊 Изменить количество инстансов" \
             "3" "🐳 Изменить Docker Registry" \
-            "4" "⚙️  Изменить Luna Configurator" \
+            "4" "⚙️ Изменить Luna Configurator" \
             "5" "🎮 Использование GPU: $gpu_status" \
             "6" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
@@ -5171,10 +5195,10 @@ bags_configuration_screen() {
         
         local choice
         choice=$(show_menu "⚙️  КОНФИГУРАЦИЯ BAGS" "Текущие настройки:\n🏷️  Tag: $BAGS_TAG\n📊 Инстансы: $BAGS_INSTANCES\n🐳 Registry: $DOCKER_REGISTRY\n🎮 Использование GPU: $gpu_status" \
-            "1" "🏷️  Изменить Tag" \
+            "1" "🏷️ Изменить Tag" \
             "2" "📊 Изменить количество инстансов" \
             "3" "🐳 Изменить Docker Registry" \
-            "4" "⚙️  Изменить Luna Configurator" \
+            "4" "⚙️ Изменить Luna Configurator" \
             "5" "🎮 Использование GPU: $gpu_status" \
             "6" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
@@ -5276,7 +5300,7 @@ analysis_configuration_screen() {
     while true; do
         local choice
         choice=$(show_menu "⚙️  НАСТРОЙКИ ДИАГНОСТИКИ" "Текущие настройки:\n⏱️  Таймаут: ${ANALYSIS_TIMEOUT}с\n📁 Файл по умолчанию: $DEFAULT_CAMERAS_FILE" \
-            "1" "⏱️  Изменить таймаут" \
+            "1" "⏱️ Изменить таймаут" \
             "2" "📁 Изменить файл по умолчанию" \
             "3" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
@@ -5444,7 +5468,7 @@ template_management_screen() {
         [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🛌 Лежачие: ✅ "
         
         local choice
-        choice=$(show_menu "📋 ШАБЛОН КОНФИГУРАЦИИ АНАЛИТИКИ" "Текущие настройки аналитики:\n$analytics_status" \
+        choice=$(show_menu "📋 ШАБЛОН КОНФИГУРАЦИИ АНАЛИТИки" "Текущие настройки аналитики:\n$analytics_status" \
             "1" "🔫 Оружие: $([[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
             "2" "🥊 Драки: $([[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
             "3" "🔥 Пожар: $([[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
@@ -5588,118 +5612,111 @@ show_config_files() {
         "2" "📋 Конфигурация шаблона" \
         "3" "🔍 Конфигурация агента Scanner" \
         "4" "🎒 Конфигурация агента Bags" \
-        "5" "🔍 Конфигурация анализа" \
+        "5" "⚙️ Конфигурация диагностики" \
         "6" "📦 Конфигурация логов" \
-        "7" "📋 Шаблон JSON" \
-        "8" "📹 Конфигурация StreamRecorder (docker-compose.yml)" \
-        "9" "📹 Конфигурация StreamRecorder (yucca.toml)" \
+        "7" "📋 Шаблон аналитики" \
+        "8" "📹 Конфигурация StreamRecorder" \
         "0" "🔙 Назад")
     
     case "$choice" in
         "1")
             if [[ -f "$CONFIG_FILE" ]]; then
-                show_message "⚙️  ОСНОВНАЯ КОНФИГУРАЦИЯ" "$(cat "$CONFIG_FILE")" 20 80
+                show_message "⚙️  ОСНОВНАЯ КОНФИГУРАЦИЯ" "$(cat "$CONFIG_FILE")"
             else
                 show_message "❌ ОШИБКА" "Файл конфигурации не найден"
             fi
             ;;
         "2")
             if [[ -f "$TEMPLATE_CONFIG_FILE" ]]; then
-                show_message "📋 КОНФИГУРАЦИЯ ШАБЛОНА" "$(cat "$TEMPLATE_CONFIG_FILE")" 20 80
+                show_message "📋 КОНФИГУРАЦИЯ ШАБЛОНА" "$(cat "$TEMPLATE_CONFIG_FILE")"
             else
                 show_message "❌ ОШИБКА" "Файл конфигурации шаблона не найден"
             fi
             ;;
         "3")
             if [[ -f "$SCANNER_CONFIG_FILE" ]]; then
-                show_message "🔍 КОНФИГУРАЦИЯ SCANNER" "$(cat "$SCANNER_CONFIG_FILE")" 20 80
+                show_message "🔍 КОНФИГУРАЦИЯ SCANNER" "$(cat "$SCANNER_CONFIG_FILE")"
             else
                 show_message "❌ ОШИБКА" "Файл конфигурации Scanner не найден"
             fi
             ;;
         "4")
             if [[ -f "$BAGS_CONFIG_FILE" ]]; then
-                show_message "🎒 КОНФИГУРАЦИЯ BAGS" "$(cat "$BAGS_CONFIG_FILE")" 20 80
+                show_message "🎒 КОНФИГУРАЦИЯ BAGS" "$(cat "$BAGS_CONFIG_FILE")"
             else
                 show_message "❌ ОШИБКА" "Файл конфигурации Bags не найден"
             fi
             ;;
         "5")
             if [[ -f "$ANALYSIS_CONFIG_FILE" ]]; then
-                show_message "🔍 КОНФИГУРАЦИЯ АНАЛИЗА" "$(cat "$ANALYSIS_CONFIG_FILE")" 20 80
+                show_message "⚙️  КОНФИГУРАЦИЯ ДИАГНОСТИКИ" "$(cat "$ANALYSIS_CONFIG_FILE")"
             else
-                show_message "❌ ОШИБКА" "Файл конфигурации анализа не найден"
+                show_message "❌ ОШИБКА" "Файл конфигурации диагностики не найден"
             fi
             ;;
         "6")
             if [[ -f "$LOGS_CONFIG_FILE" ]]; then
-                show_message "📦 КОНФИГУРАЦИЯ ЛОГОВ" "$(cat "$LOGS_CONFIG_FILE")" 20 80
+                show_message "📦 КОНФИГУРАЦИЯ ЛОГОВ" "$(cat "$LOGS_CONFIG_FILE")"
             else
                 show_message "❌ ОШИБКА" "Файл конфигурации логов не найден"
             fi
             ;;
         "7")
             if [[ -f "$TEMPLATE_FILE" ]]; then
-                show_message "📋 ШАБЛОН JSON" "$(cat "$TEMPLATE_FILE")" 25 90
+                show_message "📋 ШАБЛОН АНАЛИТИКИ" "$(cat "$TEMPLATE_FILE")" 25 90
             else
-                show_message "❌ ОШИБКА" "Файл шаблона не найден"
+                show_message "❌ ОШИБКА" "Файл шаблона аналитики не найден"
             fi
             ;;
         "8")
             if [[ -f "$RECORDER_CONFIG_FILE" ]]; then
                 show_message "📹 КОНФИГУРАЦИЯ STREAMRECORDER" "$(cat "$RECORDER_CONFIG_FILE")" 25 90
             else
-                show_message "❌ ОШИБКА" "Файл docker-compose.yml не найден"
+                show_message "❌ ОШИБКА" "Файл конфигурации StreamRecorder не найден"
             fi
             ;;
-        "9")
-            if [[ -f "$YUCCA_CONFIG_FILE" ]]; then
-                show_message "📹 КОНФИГУРАЦИЯ YUCCA.TOML" "$(cat "$YUCCA_CONFIG_FILE")" 25 90
-            else
-                show_message "❌ ОШИБКА" "Файл yucca.toml не найден"
-            fi
-            ;;
-        "0") break ;;
+        "0") ;;
     esac
 }
 
 logs_configuration_screen() {
     while true; do
         local choice
-        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n⏰ Период сбора: $DEFAULT_LOG_HOURS\n🗓️  Хранение: $LOG_RETENTION_DAYS дней\n📁 Директория: $LOGS_DIR" \
-            "1" "⏰ Изменить период сбора" \
-            "2" "🗓️  Изменить период хранения" \
-            "3" "📁 Изменить директорию" \
+        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n📁 Директория: $LOGS_DIR\n⏱️  Период сбора: $DEFAULT_LOG_HOURS\n🗑️  Хранение: $LOG_RETENTION_DAYS дней" \
+            "1" "📁 Изменить директорию логов" \
+            "2" "⏱️  Изменить период сбора" \
+            "3" "🗑️  Изменить период хранения" \
             "4" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1")
-                local new_hours
-                new_hours=$(show_input "⏰ ПЕРИОД СБОРА" "Введите период для сбора логов (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
-                if [[ -n "$new_hours" ]]; then
-                    DEFAULT_LOG_HOURS="$new_hours"
+                local new_dir
+                new_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите новую директорию логов:" "$LOGS_DIR")
+                if [[ -n "$new_dir" ]]; then
+                    LOGS_DIR="$new_dir"
                     save_logs_config
-                    show_message "✅ УСПЕХ" "⏰ Период сбора обновлен: $DEFAULT_LOG_HOURS"
+                    show_message "✅ УСПЕХ" "📁 Директория логов обновлена: $LOGS_DIR"
                 fi
                 ;;
             "2")
-                local new_days
-                new_days=$(show_input "🗓️  ПЕРИОД ХРАНЕНИЯ" "Введите количество дней хранения логов:" "$LOG_RETENTION_DAYS")
-                if [[ -n "$new_days" ]] && [[ "$new_days" =~ ^[0-9]+$ ]]; then
-                    LOG_RETENTION_DAYS="$new_days"
+                local new_hours
+                new_hours=$(show_input "⏱️  ПЕРИОД СБОРА" "Введите период сбора логов (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
+                if [[ -n "$new_hours" ]]; then
+                    DEFAULT_LOG_HOURS="$new_hours"
                     save_logs_config
-                    show_message "✅ УСПЕХ" "🗓️  Период хранения обновлен: $LOG_RETENTION_DAYS дней"
+                    show_message "✅ УСПЕХ" "⏱️  Период сбора обновлен: $DEFAULT_LOG_HOURS"
                 fi
                 ;;
             "3")
-                local new_dir
-                new_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите новую директорию для логов:" "$LOGS_DIR")
-                if [[ -n "$new_dir" ]]; then
-                    LOGS_DIR="$new_dir"
-                    mkdir -p "$LOGS_DIR"
+                local new_days
+                new_days=$(show_input "🗑️  ПЕРИОД ХРАНЕНИЯ" "Введите период хранения логов в днях:" "$LOG_RETENTION_DAYS")
+                if [[ -n "$new_days" ]] && [[ "$new_days" =~ ^[0-9]+$ ]]; then
+                    LOG_RETENTION_DAYS="$new_days"
                     save_logs_config
-                    show_message "✅ УСПЕХ" "📁 Директория логов обновлена: $LOGS_DIR"
+                    show_message "✅ УСПЕХ" "🗑️  Период хранения обновлен: $LOG_RETENTION_DAYS дней"
+                else
+                    show_message "❌ ОШИБКА" "Введите корректное число дней"
                 fi
                 ;;
             "4")
@@ -5716,20 +5733,27 @@ logs_configuration_screen() {
 }
 
 # ============================================================================
-# ФУНКЦИЯ ВЫХОДА
+# ФУНКЦИИ ВЫХОДА И ЗАПУСКА
 # ============================================================================
 
 exit_screen() {
-    if show_yesno "🚪 ВЫХОД" "Вы уверены, что хотите выйти?"; then
-        cleanup
+    if show_yesno "🚪 ВЫХОД" "Вы уверены, что хотите выйти из системы управления?"; then
+        exit 0
     fi
 }
 
 # ============================================================================
-# ЗАПУСК ПРОГРАММЫ
+# ЗАПУСК СИСТЕМЫ
 # ============================================================================
 
+# Проверяем зависимости
 check_dependencies
+
+# Инициализируем систему
 init
+
+# Показываем информацию о системе
 show_system_info_splash
+
+# Запускаем основное меню
 main_menu
