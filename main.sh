@@ -1629,6 +1629,144 @@ run_migration() {
     fi
 }
 
+select_analytics_before_add() {
+    echo "📊 Выбор аналитик для применения к видеопотокам..."
+    
+    # Сохраняем текущие настройки аналитик
+    local current_weapon="$WEAPON_ANALYTICS_ENABLED"
+    local current_fights="$FIGHTS_ANALYTICS_ENABLED"
+    local current_fire="$FIRE_ANALYTICS_ENABLED"
+    local current_people="$PEOPLE_ANALYTICS_ENABLED"
+    local current_facecover="$FACECOVER_ANALYTICS_ENABLED"
+    local current_bags="$BAGS_ANALYTICS_ENABLED"
+    local current_handsup="$HANDSUP_ANALYTICS_ENABLED"
+    local current_lyingdown="$LYINGDOWN_ANALYTICS_ENABLED"
+    
+    # Создаем опции для выбора аналитик
+    local analytics_options=()
+    
+    # Добавляем варианты аналитик
+    if [[ "$current_weapon" == "true" ]]; then
+        analytics_options+=("weapon" "🔫 Обнаружение оружия (ВКЛЮЧЕНО)" "ON")
+    else
+        analytics_options+=("weapon" "🔫 Обнаружение оружия" "OFF")
+    fi
+    
+    if [[ "$current_fights" == "true" ]]; then
+        analytics_options+=("fights" "🥊 Обнаружение драк (ВКЛЮЧЕНО)" "ON")
+    else
+        analytics_options+=("fights" "🥊 Обнаружение драк" "OFF")
+    fi
+    
+    if [[ "$current_fire" == "true" ]]; then
+        analytics_options+=("fire" "🔥 Обнаружение огня (ВКЛЮЧЕНО)" "ON")
+    else
+        analytics_options+=("fire" "🔥 Обнаружение огня" "OFF")
+    fi
+    
+    if [[ "$current_facecover" == "true" ]]; then
+        analytics_options+=("facecover" "😷 Обнаружение балаклав (ВКЛЮЧЕНО)" "ON")
+    else
+        analytics_options+=("facecover" "😷 Обнаружение балаклав" "OFF")
+    fi
+    
+    if [[ "$current_people" == "true" ]]; then
+        analytics_options+=("people" "👥 Подсчет людей (ВКЛЮЧЕНО)" "ON")
+    else
+        analytics_options+=("people" "👥 Подсчет людей" "OFF")
+    fi
+    
+    if [[ "$current_bags" == "true" ]]; then
+        analytics_options+=("bags" "🎒 Обнаружение сумок (ВКЛЮЧЕНО)" "ON")
+    else
+        analytics_options+=("bags" "🎒 Обнаружение сумок" "OFF")
+    fi
+    
+    if [[ "$current_handsup" == "true" ]]; then
+        analytics_options+=("handsup" "🙌 Обнаружение рук вверх (ВКЛЮЧЕНО)" "ON")
+    else
+        analytics_options+=("handsup" "🙌 Обнаружение рук вверх" "OFF")
+    fi
+    
+    if [[ "$current_lyingdown" == "true" ]]; then
+        analytics_options+=("lyingdown" "🛌 Обнаружение лежащих людей (ВКЛЮЧЕНО)" "ON")
+    else
+        analytics_options+=("lyingdown" "🛌 Обнаружение лежащих людей" "OFF")
+    fi
+    
+    # Показываем меню выбора
+    local selected_analytics
+    selected_analytics=$(show_checklist "📊 ВЫБОР АНАЛИТИК" "Выберите аналитики для применения к новым видеопотокам:" "${analytics_options[@]}")
+    
+    if [[ -n "$selected_analytics" ]]; then
+        # Сбрасываем все аналитики
+        WEAPON_ANALYTICS_ENABLED="false"
+        FIGHTS_ANALYTICS_ENABLED="false"
+        FIRE_ANALYTICS_ENABLED="false"
+        PEOPLE_ANALYTICS_ENABLED="false"
+        FACECOVER_ANALYTICS_ENABLED="false"
+        BAGS_ANALYTICS_ENABLED="false"
+        HANDSUP_ANALYTICS_ENABLED="false"
+        LYINGDOWN_ANALYTICS_ENABLED="false"
+        
+        # Устанавливаем выбранные аналитики
+        IFS=' ' read -ra selected_array <<< "$selected_analytics"
+        for analytic in "${selected_array[@]}"; do
+            analytic=$(echo "$analytic" | sed 's/"//g')
+            case "$analytic" in
+                "weapon") WEAPON_ANALYTICS_ENABLED="true" ;;
+                "fights") FIGHTS_ANALYTICS_ENABLED="true" ;;
+                "fire") FIRE_ANALYTICS_ENABLED="true" ;;
+                "people") PEOPLE_ANALYTICS_ENABLED="true" ;;
+                "facecover") FACECOVER_ANALYTICS_ENABLED="true" ;;
+                "bags") BAGS_ANALYTICS_ENABLED="true" ;;
+                "handsup") HANDSUP_ANALYTICS_ENABLED="true" ;;
+                "lyingdown") LYINGDOWN_ANALYTICS_ENABLED="true" ;;
+            esac
+        done
+        
+        # Сохраняем временную конфигурацию
+        save_template_config
+        
+        # Создаем временный шаблон с выбранными аналитиками
+        create_default_template
+        
+        # Показываем информацию о выбранных аналитиках
+        local selected_list=""
+        [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🔫 Обнаружение оружия\n"
+        [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🥊 Обнаружение драк\n"
+        [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🔥 Обнаружение огня\n"
+        [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 😷 Обнаружение балаклав\n"
+        [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 👥 Подсчет людей\n"
+        [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🎒 Обнаружение сумок\n"
+        [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🙌 Обнаружение рук вверх\n"
+        [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🛌 Обнаружение лежащих людей\n"
+        
+        if [[ -z "$selected_list" ]]; then
+            selected_list="❌ Не выбрано ни одной аналитики\n"
+        fi
+        
+        show_message "✅ АНАЛИТИКИ ВЫБРАНЫ" "📊 Выбраны следующие аналитики:\n\n$selected_list\n⚙️  Шаблон обновлен и готов к использованию."
+        
+        # Возвращаем успешный результат
+        return 0
+    else
+        # Если выбор отменен, восстанавливаем старые настройки
+        WEAPON_ANALYTICS_ENABLED="$current_weapon"
+        FIGHTS_ANALYTICS_ENABLED="$current_fights"
+        FIRE_ANALYTICS_ENABLED="$current_fire"
+        PEOPLE_ANALYTICS_ENABLED="$current_people"
+        FACECOVER_ANALYTICS_ENABLED="$current_facecover"
+        BAGS_ANALYTICS_ENABLED="$current_bags"
+        HANDSUP_ANALYTICS_ENABLED="$current_handsup"
+        LYINGDOWN_ANALYTICS_ENABLED="$current_lyingdown"
+        
+        show_message "❌ ОТМЕНА" "Выбор аналитик отменен. Используются текущие настройки."
+        return 1
+    fi
+}
+
+
 # ============================================================================
 # ОПТИМИЗИРОВАННЫЕ ФУНКЦИИ ГЕНЕРАЦИИ ОТЧЕТОВ
 # ============================================================================
@@ -2355,7 +2493,8 @@ get_stream_status_display() {
     local status_code="$1"
     case "$status_code" in
         "1") echo "🔄 В процессе" ;;
-        "5") echo "⏸️  Остановлен" ;;
+        "5") echo "⏸️ Остановлен" ;;
+        "4") echo "⏸️ Сбой" ;;
         "3") echo "🔄 Перезапуск" ;;
         "0") echo "⏳ Ожидание" ;;
         *) echo "❓ Неизвестный ($status_code)" ;;
@@ -4941,24 +5080,36 @@ add_cameras_file_screen() {
     file_path=$(show_input "➕ ДОБАВЛЕНИЕ КАМЕР" "Введите путь к файлу с камерами:" "$DEFAULT_CAMERAS_FILE")
     
     if [[ -n "$file_path" ]]; then
-        local preview
-        preview=$(head -10 "$file_path" 2>/dev/null || echo "Не удалось прочитать файл")
-        
-        local template_preview=""
-        if [[ -f "$TEMPLATE_FILE" ]]; then
-            template_preview=$(jq -c '.' "$TEMPLATE_FILE" 2>/dev/null || cat "$TEMPLATE_FILE")
-            template_preview="📋 Шаблон аналитики:\n${template_preview:0:200}..."
-        else
-            template_preview="❌ Шаблон аналитики не найден"
-        fi
-        
-        local confirmation_message="📁 Файл: $file_path\n\n"
-        confirmation_message+="📄 Первые 10 строк:\n$preview\n\n"
-        confirmation_message+="$template_preview\n\n"
-        confirmation_message+="➕ Продолжить добавление?"
-        
-        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "$confirmation_message"; then
-            add_streams_from_file "$file_path"
+        if select_analytics_before_add; then
+            local preview
+            preview=$(head -10 "$file_path" 2>/dev/null || echo "Не удалось прочитать файл")
+            
+            local template_preview=""
+            if [[ -f "$TEMPLATE_FILE" ]]; then
+                template_preview=$(jq -c '.' "$TEMPLATE_FILE" 2>/dev/null || cat "$TEMPLATE_FILE")
+                template_preview="📋 Шаблон аналитики:\n${template_preview:0:200}..."
+            else
+                template_preview="❌ Шаблон аналитики не найден"
+            fi
+            
+            local confirmation_message="📁 Файл: $file_path\n\n"
+            confirmation_message+="📄 Первые 10 строк:\n$preview\n\n"
+            confirmation_message+="$template_preview\n\n"
+            confirmation_message+="📊 ВЫБРАННЫЕ АНАЛИТИКИ:\n"
+                
+            [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🔫 Обнаружение оружия\n"
+            [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🥊 Обнаружение драк\n"
+            [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🔥 Обнаружение огня\n"
+            [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 😷 Обнаружение балаклав\n"
+            [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 👥 Подсчет людей\n"
+            [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🎒 Обнаружение сумок\n"
+            [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🙌 Обнаружение рук вверх\n"
+            [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🛌 Обнаружение лежащих людей\n"
+            confirmation_message+="➕ Продолжить добавление?"
+            
+            if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "$confirmation_message"; then
+                add_streams_from_file "$file_path"
+            fi
         fi
     else
         show_message "❌ ОШИБКА" "Файл не указан"
@@ -5432,69 +5583,28 @@ analyze_cameras_simple_screen() {
     cameras_file=$(show_input "🔍 БЫСТРАЯ ДИАГНОСТИКА" "Введите путь к файлу с камерами:" "$DEFAULT_CAMERAS_FILE")
     
     if [[ -n "$cameras_file" ]]; then
-        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "🔍 Запустить быструю диагностика видеопотоков из файла:\n$cameras_file?"; then
+        local preview
+        preview=$(head -10 "$cameras_file" 2>/dev/null || echo "Не удалось прочитать файл")
+        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "📁 Файл: $cameras_file\n\n📄 Первые 10 строк:\n$preview\n\n🔍 Продолжить диагностику?"; then
             analyze_cameras_from_file "$cameras_file"
         fi
+    else
+        show_message "❌ ОШИБКА" "Файл не указан"
     fi
 }
 
 analyze_single_camera_screen() {
-    local camera_name
-    camera_name=$(show_input "🔍 ДИАГНОСТИКА КАМЕРЫ" "Введите имя камеры:" "")
-    [[ -z "$camera_name" ]] && return
-    
     local camera_url
-    camera_url=$(show_input "🔍 ДИАГНОСТИКА КАМЕРЫ" "Введите URL камеры:" "")
+    camera_url=$(show_input "🎥 ДИАГНОСТИКА ОДНОЙ КАМЕРЫ" "Введите URL камеры:" "")
     [[ -z "$camera_url" ]] && return
     
     local temp_file
     temp_file=$(mktemp)
-    echo "$camera_name $camera_url" > "$temp_file"
+    echo "single_camera $camera_url" > "$temp_file"
     
     analyze_cameras_from_file "$temp_file"
     
     rm -f "$temp_file"
-}
-
-analysis_configuration_screen() {
-    while true; do
-        local choice
-        choice=$(show_menu "⚙️  НАСТРОЙКИ ДИАГНОСТИКИ" "Текущие настройки:\n⏱️  Таймаут: ${ANALYSIS_TIMEOUT}с\n📁 Файл по умолчанию: $DEFAULT_CAMERAS_FILE" \
-            "1" "⏱️ Изменить таймаут" \
-            "2" "📁 Изменить файл по умолчанию" \
-            "3" "🔄 Сбросить настройки" \
-            "0" "🔙 Назад")
-        
-        case "$choice" in
-            "1")
-                local new_timeout
-                new_timeout=$(show_input "⏱️  ТАЙМАУТ" "Введите таймаут в секундах:" "$ANALYSIS_TIMEOUT")
-                if [[ -n "$new_timeout" && "$new_timeout" =~ ^[0-9]+$ ]]; then
-                    ANALYSIS_TIMEOUT="$new_timeout"
-                    save_analysis_config
-                    show_message "✅ УСПЕХ" "⏱️  Таймаут обновлен: ${ANALYSIS_TIMEOUT}с"
-                fi
-                ;;
-            "2")
-                local new_file
-                new_file=$(show_input "📁 ФАЙЛ КАМЕР" "Введите путь к файлу камер по умолчанию:" "$DEFAULT_CAMERAS_FILE")
-                if [[ -n "$new_file" ]]; then
-                    DEFAULT_CAMERAS_FILE="$new_file"
-                    save_analysis_config
-                    show_message "✅ УСПЕХ" "📁 Файл по умолчанию обновлен: $DEFAULT_CAMERAS_FILE"
-                fi
-                ;;
-            "3")
-                if show_yesno "🔄 СБРОС НАСТРОЕК" "Сбросить настройки к значениям по умолчанию?"; then
-                    create_default_analysis_config
-                    # shellcheck source=/dev/null
-                    source "$ANALYSIS_CONFIG_FILE"
-                    show_message "✅ УСПЕХ" "Настройки восстановлены"
-                fi
-                ;;
-            "0") break ;;
-        esac
-    done
 }
 
 view_latest_report() {
@@ -5517,286 +5627,54 @@ view_all_reports() {
         return
     fi
     
-    local report_list=""
+    local report_list="📋 НАЙДЕННЫЕ ОТЧЕТЫ:\n\n"
     for report in "${reports[@]}"; do
-        local report_name report_size report_date
+        local report_name report_date report_size
         report_name=$(basename "$report")
+        report_date=$(stat -c %y "$report" 2>/dev/null | cut -d' ' -f1,2 || echo "N/A")
         report_size=$(du -h "$report" 2>/dev/null | cut -f1 || echo "N/A")
-        report_date=$(stat -c %y "$report" 2>/dev/null | cut -d' ' -f1 || echo "N/A")
-        report_list+="📁 $report_name $report_size - $report_date\n"
+        report_list+="📄 $report_name\n📅 $report_date\n📊 $report_size\n────────────────────────────────\n"
     done
     
-    show_message "📂 ВСЕ ОТЧЕТЫ ${#reports[@]}" "$report_list" 20 80
+    show_message "📋 ВСЕ ОТЧЕТЫ ДИАГНОСТИКИ" "$report_list" 25 90
 }
 
-show_system_info() {
-    local system_info=""
-    
-    system_info+="📡 СЕТЕВЫЕ НАСТРОЙКИ:\n"
-    system_info+="🌐 Host IP: $HOST_IP\n"
-    system_info+="🔗 LunaAPI: $API_URL\n"
-    system_info+="👤 Account ID: $ACCOUNT_ID\n\n"
-    
-    system_info+="⚙️  СИСТЕМНЫЕ РЕСУРСЫ:\n"
-    system_info+="🖥️  CPU:\n"
-    system_info+=$(get_cpu_info)
-    system_info+="\n🎮 GPU:\n"
-    system_info+=$(get_gpu_info)
-    
-    system_info+="\n🌐 СЕТЬ:\n"
-    system_info+=$(get_network_info)
-    
-    system_info+="\n📊 ВЕРСИИ СИСТЕМ:\n"
-    local luna_version
-    luna_version=$(get_luna_platform_version)
-    system_info+="🚀 Luna Platform: $luna_version\n"
-    
-    local facestream_version
-    facestream_version=$(get_facestream_version)
-    system_info+="🎥 FaceStream: $facestream_version\n"
-    
-    system_info+="\n📄 ЛИЦЕНЗИИ:\n"
-    local license_streams
-    license_streams=$(get_license_info)
-    system_info+="🎥 Потоков: $license_streams\n"
-    
-    show_message "📋 Техническая информация СВТ" "$system_info" 30 90
-}
-
-system_settings_screen() {
+analysis_configuration_screen() {
     while true; do
         local choice
-        choice=$(show_menu "⚙️  ОСНОВНЫЕ НАСТРОЙКИ" "Текущие настройки:\n🌐 Host IP: $HOST_IP\n🔗 LunaAPI: $API_URL\n👤 Account ID: $ACCOUNT_ID" \
-            "1" "🌐 Изменить Host IP" \
-            "2" "🔗 Изменить LunaAPI URL" \
-            "3" "👤 Изменить Account ID" \
-            "4" "🔄 Сбросить настройки" \
+        choice=$(show_menu "⚙️  НАСТРОЙКИ ДИАГНОСТИКИ" "Текущие настройки диагностики:\n⏱️  Таймаут: ${ANALYSIS_TIMEOUT} сек\n📁 Файл по умолчанию: $DEFAULT_CAMERAS_FILE" \
+            "1" "⏱️  Изменить таймаут диагностики" \
+            "2" "📁 Изменить файл по умолчанию" \
+            "3" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1")
-                local new_ip
-                new_ip=$(show_input "🌐 HOST IP" "Введите новый Host IP:" "$HOST_IP")
-                if [[ -n "$new_ip" ]]; then
-                    HOST_IP="$new_ip"
-                    save_config
-                    show_message "✅ УСПЕХ" "🌐 Host IP обновлен: $HOST_IP"
+                local new_timeout
+                new_timeout=$(show_input "⏱️  ТАЙМАУТ ДИАГНОСТИКИ" "Введите таймаут в секундах:" "$ANALYSIS_TIMEOUT")
+                if [[ -n "$new_timeout" ]] && [[ "$new_timeout" =~ ^[0-9]+$ ]]; then
+                    ANALYSIS_TIMEOUT="$new_timeout"
+                    save_analysis_config
+                    show_message "✅ УСПЕХ" "⏱️  Таймаут обновлен: ${ANALYSIS_TIMEOUT} сек"
+                else
+                    show_message "❌ ОШИБКА" "Введите корректное число"
                 fi
                 ;;
             "2")
-                local new_api
-                new_api=$(show_input "🔗 LUNAAPI URL" "Введите новый LunaAPI URL:" "$API_URL")
-                if [[ -n "$new_api" ]]; then
-                    API_URL="$new_api"
-                    save_config
-                    show_message "✅ УСПЕХ" "🔗 LunaAPI URL обновлен: $API_URL"
+                local new_cameras_file
+                new_cameras_file=$(show_input "📁 ФАЙЛ КАМЕР ПО УМОЛЧАНИЮ" "Введите путь к файлу:" "$DEFAULT_CAMERAS_FILE")
+                if [[ -n "$new_cameras_file" ]]; then
+                    DEFAULT_CAMERAS_FILE="$new_cameras_file"
+                    save_analysis_config
+                    show_message "✅ УСПЕХ" "📁 Файл по умолчанию обновлен: $DEFAULT_CAMERAS_FILE"
                 fi
                 ;;
             "3")
-                local new_account
-                new_account=$(show_input "👤 ACCOUNT ID" "Введите новый Account ID:" "$ACCOUNT_ID")
-                if [[ -n "$new_account" ]]; then
-                    ACCOUNT_ID="$new_account"
-                    save_config
-                    show_message "✅ УСПЕХ" "👤 Account ID обновлен: $ACCOUNT_ID"
-                fi
-                ;;
-            "4")
-                if show_yesno "🔄 СБРОС НАСТРОЕК" "Сбросить основные настройки к значениям по умолчанию?"; then
-                    save_config
+                if show_yesno "🔄 СБРОС НАСТРОЕК" "Сбросить настройки диагностики к значениям по умолчанию?"; then
+                    create_default_analysis_config
                     # shellcheck source=/dev/null
-                    source "$CONFIG_FILE"
-                    show_message "✅ УСПЕХ" "Настройки восстановлены"
-                fi
-                ;;
-            "0") break ;;
-        esac
-    done
-}
-
-template_management_screen() {
-    while true; do
-        local analytics_status=""
-        
-        if [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]]; then
-            analytics_status+="🔫 Оружие: ✅\n"
-        else
-            analytics_status+="🔫 Оружие: ❌\n"
-        fi
-        
-        if [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]]; then
-            analytics_status+="🥊 Драки: ✅\n"
-        else
-            analytics_status+="🥊 Драки: ❌\n"
-        fi
-        
-        if [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]]; then
-            analytics_status+="🔥 Огонь: ✅\n"
-        else
-            analytics_status+="🔥 Огонь: ❌\n"
-        fi
-        
-        if [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]]; then
-            analytics_status+="👥 Подсчёт людей: ✅\n"
-        else
-            analytics_status+="👥 Подсчёт людей: ❌\n"
-        fi
-        
-        if [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]]; then
-            analytics_status+="😷 Балаклавы: ✅\n"
-        else
-            analytics_status+="😷 Балаклавы: ❌\n"
-        fi
-        
-        if [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]]; then
-            analytics_status+="🎒 Оставленные вещи: ✅\n"
-        else
-            analytics_status+="🎒 Оставленные вещи: ❌\n"
-        fi
-        
-        if [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]]; then
-            analytics_status+="✋ Поднятые руки: ✅\n"
-        else
-            analytics_status+="✋ Поднятые руки: ❌\n"
-        fi
-        
-        if [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]]; then
-            analytics_status+="💤 Лежачие: ✅\n"
-        else
-            analytics_status+="💤 Лежачие: ❌\n"
-        fi
-        
-        local choice
-        choice=$(show_menu "📋 УПРАВЛЕНИЕ ШАБЛОНОМ АНАЛИТИКИ" "Текущие настройки аналитики:\n$analytics_status" \
-            "1" "🔫 Оружие: $([[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "2" "🥊 Драки: $([[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "3" "🔥 Огонь: $([[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "4" "👥 Подсчёт людей: $([[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "5" "😷 Балаклавы: $([[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "6" "🎒 Оставленные вещи: $([[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "7" "✋ Поднятые руки: $([[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "8" "💤 Лежачие: $([[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && echo "✅" || echo "❌")" \
-            "9" "📝 Редактировать шаблон" \
-            "10" "🔄 Сбросить шаблон" \
-            "0" "🔙 Назад")
-        
-        case "$choice" in
-            "1")
-                if [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]]; then
-                    WEAPON_ANALYTICS_ENABLED="false"
-                    show_message "🔫 ОРУЖИЕ" "🔫 Аналитика оружия отключена"
-                else
-                    WEAPON_ANALYTICS_ENABLED="true"
-                    show_message "🔫 ОРУЖИЕ" "🔫 Аналитика оружия включена"
-                fi
-                save_template_config
-                create_default_template
-                ;;
-            "2")
-                if [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]]; then
-                    FIGHTS_ANALYTICS_ENABLED="false"
-                    show_message "🥊 ДРАКИ" "🥊 Аналитика драк отключена"
-                else
-                    FIGHTS_ANALYTICS_ENABLED="true"
-                    show_message "🥊 ДРАКИ" "🥊 Аналитика драк включена"
-                fi
-                save_template_config
-                create_default_template
-                ;;
-            "3")
-                if [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]]; then
-                    FIRE_ANALYTICS_ENABLED="false"
-                    show_message "🔥 ПОЖАР" "🔥 Аналитика пожара отключена"
-                else
-                    FIRE_ANALYTICS_ENABLED="true"
-                    show_message "🔥 ПОЖАР" "🔥 Аналитика пожара включена"
-                fi
-                save_template_config
-                create_default_template
-                ;;
-            "4")
-                if [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]]; then
-                    PEOPLE_ANALYTICS_ENABLED="false"
-                    show_message "👥 ЛЮДИ" "👥 Аналитика людей отключена"
-                else
-                    PEOPLE_ANALYTICS_ENABLED="true"
-                    show_message "👥 ЛЮДИ" "👥 Аналитика людей включена"
-                fi
-                save_template_config
-                create_default_template
-                ;;
-            "5")
-                if [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]]; then
-                    FACECOVER_ANALYTICS_ENABLED="false"
-                    show_message "😷 МАСКИ" "😷 Аналитика масок отключена"
-                else
-                    FACECOVER_ANALYTICS_ENABLED="true"
-                    show_message "😷 МАСКИ" "😷 Аналитика масок включена"
-                fi
-                save_template_config
-                create_default_template
-                ;;
-            "6")
-                if [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]]; then
-                    BAGS_ANALYTICS_ENABLED="false"
-                    show_message "🎒 СУМКИ" "🎒 Аналитика сумок отключена"
-                else
-                    BAGS_ANALYTICS_ENABLED="true"
-                    show_message "🎒 СУМКИ" "🎒 Аналитика сумок включена"
-                fi
-                save_template_config
-                create_default_template
-                ;;
-            "7")
-                if [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]]; then
-                    HANDSUP_ANALYTICS_ENABLED="false"
-                    show_message "✋ РУКИ" "✋ Аналитика поднятых рук отключена"
-                else
-                    HANDSUP_ANALYTICS_ENABLED="true"
-                    show_message "✋ РУКИ" "✋ Аналитика поднятых рук включена"
-                fi
-                save_template_config
-                create_default_template
-                ;;
-            "8")
-                if [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]]; then
-                    LYINGDOWN_ANALYTICS_ENABLED="false"
-                    show_message "💤 ЛЕЖАЧИЕ" "💤 Аналитика лежачих людей отключена"
-                else
-                    LYINGDOWN_ANALYTICS_ENABLED="true"
-                    show_message "💤 ЛЕЖАЧИЕ" "💤 Аналитика лежачих людей включена"
-                fi
-                save_template_config
-                create_default_template
-                ;;
-            "9")
-                if [[ -f "$TEMPLATE_FILE" ]]; then
-                    local editor="${EDITOR:-nano}"
-                    if command -v "$editor" &> /dev/null; then
-                        $editor "$TEMPLATE_FILE"
-                        if jq empty "$TEMPLATE_FILE" 2>/dev/null; then
-                            show_message "✅ УСПЕХ" "Шаблон успешно отредактирован"
-                        else
-                            show_message "❌ ОШИБКА" "Неверный JSON в шаблоне"
-                            if show_yesno "❌ ОШИБКА" "В шаблоне невалидный JSON. Восстановить стандартный шаблон?"; then
-                                create_default_template
-                                show_message "✅ УСПЕХ" "Шаблон восстановлен"
-                            fi
-                        fi
-                    else
-                        show_message "❌ ОШИБКА" "Текстовый редактор $editor не найден"
-                    fi
-                else
-                    show_message "❌ ОШИБКА" "Файл шаблона не найден"
-                fi
-                ;;
-            "10")
-                if show_yesno "🔄 СБРОС ШАБЛОНА" "Сбросить шаблон к значениям по умолчанию?"; then
-                    create_default_template_config
-                    create_default_template
-                    # shellcheck source=/dev/null
-                    source "$TEMPLATE_CONFIG_FILE"
-                    show_message "✅ УСПЕХ" "Шаблон сброшен"
+                    source "$ANALYSIS_CONFIG_FILE"
+                    show_message "✅ УСПЕХ" "Настройки диагностики сброшены"
                 fi
                 ;;
             "0") break ;;
@@ -5807,17 +5685,37 @@ template_management_screen() {
 logs_configuration_screen() {
     while true; do
         local choice
-        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n📁 Директория: $LOGS_DIR\n⏱️  Период сбора: $DEFAULT_LOG_HOURS\n📅 Хранение: $LOG_RETENTION_DAYS дней" \
-            "1" "📁 Изменить директорию логов" \
-            "2" "⏱️ Изменить период сбора" \
-            "3" "📅 Изменить период хранения" \
+        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n⏰ Период сбора: $DEFAULT_LOG_HOURS\n🗑️  Хранение: $LOG_RETENTION_DAYS дней\n📁 Директория: $LOGS_DIR" \
+            "1" "⏰ Изменить период сбора логов" \
+            "2" "🗑️  Изменить период хранения логов" \
+            "3" "📁 Изменить директорию логов" \
             "4" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1")
+                local new_hours
+                new_hours=$(show_input "⏰ ПЕРИОД СБОРА ЛОГОВ" "Введите период (например: 6h, 1d, 24h):" "$DEFAULT_LOG_HOURS")
+                if [[ -n "$new_hours" ]]; then
+                    DEFAULT_LOG_HOURS="$new_hours"
+                    save_logs_config
+                    show_message "✅ УСПЕХ" "⏰ Период сбора обновлен: $DEFAULT_LOG_HOURS"
+                fi
+                ;;
+            "2")
+                local new_days
+                new_days=$(show_input "🗑️  ПЕРИОД ХРАНЕНИЯ ЛОГОВ" "Введите количество дней хранения:" "$LOG_RETENTION_DAYS")
+                if [[ -n "$new_days" ]] && [[ "$new_days" =~ ^[0-9]+$ ]]; then
+                    LOG_RETENTION_DAYS="$new_days"
+                    save_logs_config
+                    show_message "✅ УСПЕХ" "🗑️  Период хранения обновлен: $LOG_RETENTION_DAYS дней"
+                else
+                    show_message "❌ ОШИБКА" "Введите корректное число"
+                fi
+                ;;
+            "3")
                 local new_logs_dir
-                new_logs_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите новую директорию для логов:" "$LOGS_DIR")
+                new_logs_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите путь к директории:" "$LOGS_DIR")
                 if [[ -n "$new_logs_dir" ]]; then
                     LOGS_DIR="$new_logs_dir"
                     mkdir -p "$LOGS_DIR"
@@ -5825,32 +5723,133 @@ logs_configuration_screen() {
                     show_message "✅ УСПЕХ" "📁 Директория логов обновлена: $LOGS_DIR"
                 fi
                 ;;
-            "2")
-                local new_hours
-                new_hours=$(show_input "⏱️  ПЕРИОД СБОРА" "Введите период сбора логов (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
-                if [[ -n "$new_hours" ]]; then
-                    DEFAULT_LOG_HOURS="$new_hours"
-                    save_logs_config
-                    show_message "✅ УСПЕХ" "⏱️  Период сбора обновлен: $DEFAULT_LOG_HOURS"
-                fi
-                ;;
-            "3")
-                local new_days
-                new_days=$(show_input "📅 ХРАНЕНИЕ ЛОГОВ" "Введите количество дней хранения логов:" "$LOG_RETENTION_DAYS")
-                if [[ -n "$new_days" && "$new_days" =~ ^[0-9]+$ ]]; then
-                    LOG_RETENTION_DAYS="$new_days"
-                    save_logs_config
-                    show_message "✅ УСПЕХ" "📅 Период хранения обновлен: $LOG_RETENTION_DAYS дней"
-                else
-                    show_message "❌ ОШИБКА" "Введите корректное число дней"
-                fi
-                ;;
             "4")
                 if show_yesno "🔄 СБРОС НАСТРОЕК" "Сбросить настройки логов к значениям по умолчанию?"; then
                     create_default_logs_config
                     # shellcheck source=/dev/null
                     source "$LOGS_CONFIG_FILE"
-                    show_message "✅ УСПЕХ" "Настройки логов восстановлены"
+                    show_message "✅ УСПЕХ" "Настройки логов сброшены"
+                fi
+                ;;
+            "0") break ;;
+        esac
+    done
+}
+
+system_settings_screen() {
+    while true; do
+        local choice
+        choice=$(show_menu "⚙️  ОСНОВНЫЕ НАСТРОЙКИ" "Текущие настройки системы:\n👤 Account ID: $ACCOUNT_ID\n🌐 API URL: $API_URL\n📡 Host IP: $HOST_IP" \
+            "1" "👤 Изменить Account ID" \
+            "2" "🌐 Изменить API URL" \
+            "3" "📡 Изменить Host IP" \
+            "4" "🔄 Сбросить настройки" \
+            "0" "🔙 Назад")
+        
+        case "$choice" in
+            "1")
+                local new_account_id
+                new_account_id=$(show_input "👤 ACCOUNT ID" "Введите Account ID:" "$ACCOUNT_ID")
+                if [[ -n "$new_account_id" ]]; then
+                    ACCOUNT_ID="$new_account_id"
+                    save_config
+                    show_message "✅ УСПЕХ" "👤 Account ID обновлен: $ACCOUNT_ID"
+                fi
+                ;;
+            "2")
+                local new_api_url
+                new_api_url=$(show_input "🌐 API URL" "Введите URL API:" "$API_URL")
+                if [[ -n "$new_api_url" ]]; then
+                    API_URL="$new_api_url"
+                    save_config
+                    show_message "✅ УСПЕХ" "🌐 API URL обновлен: $API_URL"
+                fi
+                ;;
+            "3")
+                local new_host_ip
+                new_host_ip=$(show_input "📡 HOST IP" "Введите IP адрес хоста:" "$HOST_IP")
+                if [[ -n "$new_host_ip" ]]; then
+                    HOST_IP="$new_host_ip"
+                    save_config
+                    show_message "✅ УСПЕХ" "📡 Host IP обновлен: $HOST_IP"
+                fi
+                ;;
+            "4")
+                if show_yesno "🔄 СБРОС НАСТРОЕК" "Сбросить основные настройки к значениям по умолчанию?"; then
+                    ACCOUNT_ID="$DEFAULT_ACCOUNT_ID"
+                    API_URL="$DEFAULT_API_URL"
+                    HOST_IP="$DEFAULT_HOST_IP"
+                    save_config
+                    show_message "✅ УСПЕХ" "Основные настройки сброшены к значениям по умолчанию"
+                fi
+                ;;
+            "0") break ;;
+        esac
+    done
+}
+
+template_management_screen() {
+    while true; do
+        local analytics_status=""
+        [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🔫 "
+        [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🥊 "
+        [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🔥 "
+        [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="👥 "
+        [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="😷 "
+        [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🎒 "
+        [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🙌 "
+        [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🛌 "
+        
+        if [[ -z "$analytics_status" ]]; then
+            analytics_status="❌ Нет активных аналитик"
+        fi
+        
+        local choice
+        choice=$(show_menu "📋 УПРАВЛЕНИЕ ШАБЛОНОМ АНАЛИТИКИ" "Управление шаблоном конфигурации аналитик\n\n📊 Активные аналитики: $analytics_status\n📁 Файл шаблона: $TEMPLATE_FILE" \
+            "1" "📊 Выбрать аналитики для шаблона" \
+            "2" "👁️  Просмотр текущего шаблона" \
+            "3" "✏️  Редактировать шаблон вручную" \
+            "4" "🔄 Обновить шаблон с выбранными аналитиками" \
+            "5" "🔄 Сбросить шаблон к умолчанию" \
+            "0" "🔙 Назад")
+        
+        case "$choice" in
+            "1")
+                select_analytics_before_add
+                ;;
+            "2")
+                if [[ -f "$TEMPLATE_FILE" ]]; then
+                    local template_content
+                    template_content=$(cat "$TEMPLATE_FILE")
+                    show_message "👁️  ТЕКУЩИЙ ШАБЛОН АНАЛИТИКИ" "$template_content" 25 90
+                else
+                    show_message "❌ ОШИБКА" "Шаблонный файл не найден"
+                fi
+                ;;
+            "3")
+                if [[ -f "$TEMPLATE_FILE" ]]; then
+                    local editor="${EDITOR:-nano}"
+                    if command -v "$editor" &> /dev/null; then
+                        $editor "$TEMPLATE_FILE"
+                        show_message "✅ УСПЕХ" "Шаблон отредактирован"
+                    else
+                        show_message "❌ ОШИБКА" "Текстовый редактор $editor не найден"
+                    fi
+                else
+                    show_message "❌ ОШИБКА" "Шаблонный файл не найден"
+                fi
+                ;;
+            "4")
+                create_default_template
+                show_message "✅ УСПЕХ" "Шаблон обновлен с текущими настройками аналитик"
+                ;;
+            "5")
+                if show_yesno "🔄 СБРОС ШАБЛОНА" "Сбросить шаблон аналитики к значениям по умолчанию?\n\n⚠️  Это удалит все пользовательские изменения в шаблоне."; then
+                    create_default_template_config
+                    # shellcheck source=/dev/null
+                    source "$TEMPLATE_CONFIG_FILE"
+                    create_default_template
+                    show_message "✅ УСПЕХ" "Шаблон сброшен к значениям по умолчанию"
                 fi
                 ;;
             "0") break ;;
