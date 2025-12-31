@@ -15,26 +15,31 @@ TEMP_DIR=$(mktemp -d)
 mkdir -p "$TEMP_DIR/.analytics_manager"
 
 # Копируем скрипт
-#cp 535.sh "$TEMP_DIR/analytics_manager/analytics_manager.sh"
-#cp 542.sh "$TEMP_DIR/analytics_manager/analytics_manager.sh"
 cp main.sh "$TEMP_DIR/.analytics_manager/analytics_manager.sh"
-
 chmod +x "$TEMP_DIR/.analytics_manager/analytics_manager.sh"
 
-# Создаем скрипт запуска
+# Создаем скрипт запуска с автоматической очисткой
 cat > "$TEMP_DIR/.analytics_manager/launch.sh" << 'EOF'
 #!/bin/bash
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(dirname "$0")"
+cd "$SCRIPT_DIR"
+
+# Запускаем основной скрипт
 ./analytics_manager.sh "$@"
+EXIT_CODE=$?
+
+# Удаляем папку с исходными файлами после завершения
+cd ..
+rm -rf "$SCRIPT_DIR"
+
+exit $EXIT_CODE
 EOF
 chmod +x "$TEMP_DIR/.analytics_manager/launch.sh"
 
 # Создаем бинарный файл
 makeself --notemp --gzip --nox11 --nomd5 --nocrc "$TEMP_DIR/.analytics_manager" cyk "Analytics Manager $VER" ./launch.sh
 
-
-
 echo "✅ Бинарный файл создан: cyk"
 echo "Размер: $(du -h cyk | cut -f1)"
-# Очистка
+# Очистка временной директории
 rm -rf "$TEMP_DIR"
