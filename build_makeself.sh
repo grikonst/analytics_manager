@@ -12,32 +12,39 @@ fi
 
 # Создаем временную директорию для пакета
 TEMP_DIR=$(mktemp -d)
-mkdir -p "$TEMP_DIR/.analytics_manager"
+mkdir -p "$TEMP_DIR/.a"
 
 # Копируем скрипт
-cp main.sh "$TEMP_DIR/.analytics_manager/analytics_manager.sh"
-chmod +x "$TEMP_DIR/.analytics_manager/analytics_manager.sh"
+cp main.sh "$TEMP_DIR/.a/a.sh"
+chmod +x "$TEMP_DIR/.a/a.sh"
 
 # Создаем скрипт запуска с автоматической очисткой
-cat > "$TEMP_DIR/.analytics_manager/launch.sh" << 'EOF'
+cat > "$TEMP_DIR/.a/launch.sh" << 'EOF'
 #!/bin/bash
-SCRIPT_DIR="$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_NAME="$(basename "$0")"
 cd "$SCRIPT_DIR"
 
 # Запускаем основной скрипт
-./analytics_manager.sh "$@"
+./a.sh "$@"
 EXIT_CODE=$?
 
-# Удаляем папку с исходными файлами после завершения
-cd ..
-rm -rf "$SCRIPT_DIR"
+# Определяем родительскую директорию и удаляем только .a
+PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+ANALYTICS_DIR_NAME="$(basename "$SCRIPT_DIR")"
+
+# Переходим в родительскую директорию и удаляем папку .a
+cd "$PARENT_DIR"
+if [ -d "$ANALYTICS_DIR_NAME" ]; then
+    rm -rf "$ANALYTICS_DIR_NAME"
+fi
 
 exit $EXIT_CODE
 EOF
-chmod +x "$TEMP_DIR/.analytics_manager/launch.sh"
+chmod +x "$TEMP_DIR/.a/launch.sh"
 
 # Создаем бинарный файл
-makeself --notemp --gzip --nox11 --nomd5 --nocrc "$TEMP_DIR/.analytics_manager" cyk "Analytics Manager $VER" ./launch.sh
+makeself --notemp --gzip --nox11 --nomd5 --nocrc "$TEMP_DIR/.a" cyk "Analytics Manager $VER" ./launch.sh
 
 echo "✅ Бинарный файл создан: cyk"
 echo "Размер: $(du -h cyk | cut -f1)"
