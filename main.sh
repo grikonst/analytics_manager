@@ -1,7 +1,5 @@
 #!/bin/bash
-
 # Система управления видеопотоками и аналитикой v5.5.5
-
 # Функция для безопасного завершения
 cleanup() {
     echo "🛑 Завершение работы..."
@@ -19,29 +17,23 @@ cleanup() {
     fi
     exit 0
 }
-
 # Обработка сигналов прерывания
 trap cleanup SIGINT SIGTERM
-
 # Глобальные массивы для управления фоновыми процессами
 declare -a BG_RECORD_PIDS=()
 declare -A BG_RECORD_INFO=()  # Хранение информации о фоновых процессах
 declare -g STREAM_RECORDER_RUNNING="false"
-
 # Запрос пароля
 echo -n "🔑 Введите пароль: "
 read -rs password
 echo
-
 # Проверка пароля (sha256 от "password123")
 if ! echo "$password" | sha256sum --check --status <(echo "a840c539c75b6c9123eb72ee2d6599ef56a8b726230ee69e52efe1d3020c6331  -") 2>/dev/null; then
     echo "❌ Неверный пароль. Доступ запрещен."
     exit 1
 fi
-
 echo "✅ Авторизация успешна!"
 sleep 1
-
 # Реорганизованная конфигурация
 CONFIG_DIR="$HOME/.stream_manager"
 AGENTS_DIR="$CONFIG_DIR/agents"
@@ -49,7 +41,6 @@ SCANNER_DIR="$AGENTS_DIR/scanner"
 BAGS_DIR="$AGENTS_DIR/bags"
 RELEASES_DIR="$AGENTS_DIR/releases"
 RECORDER_DIR="$CONFIG_DIR/recorder"
-
 CONFIG_FILE="$CONFIG_DIR/config"
 TEMPLATE_FILE="$CONFIG_DIR/template_req.json"
 TEMPLATE_CONFIG_FILE="$CONFIG_DIR/template.conf"
@@ -59,34 +50,27 @@ ANALYSIS_CONFIG_FILE="$CONFIG_DIR/analysis.conf"
 LOGS_CONFIG_FILE="$CONFIG_DIR/logs.conf"
 RECORDER_CONFIG_FILE="$RECORDER_DIR/docker-compose.yml"
 YUCCA_CONFIG_FILE="$RECORDER_DIR/yucca.toml"
-
 HISTORY_FILE="$CONFIG_DIR/camera_history.txt"
 CAMS_LIST_DIR="$CONFIG_DIR/cams_list"
 REPORT_DIR="$CONFIG_DIR/reports"
 LOGS_DIR="$CONFIG_DIR/logs_archive"
 RECORDS_DIR="$CONFIG_DIR/records"
 FRAMES_DIR="$CONFIG_DIR/frames"
-
 # Переменные по умолчанию
 DEFAULT_ACCOUNT_ID="00000000-0000-4000-b000-000000000146"
 DEFAULT_API_URL="http://127.0.0.1:5230/2/streams"
 DEFAULT_HOST_IP="127.0.0.1"
-
 ACCOUNT_ID="$DEFAULT_ACCOUNT_ID"
 API_URL="$DEFAULT_API_URL"
 HOST_IP="$DEFAULT_HOST_IP"
-
 # Диагностика - настройки по умолчанию
 ANALYSIS_TIMEOUT=15
 DEFAULT_CAMERAS_FILE="$CAMS_LIST_DIR/cams.list"
-
 # Настройки логов по умолчанию
 DEFAULT_LOG_HOURS="6h"
 LOG_RETENTION_DAYS=7
-
 # Framer настройки
 DEFAULT_CAMS_LIST="$CAMS_LIST_DIR/cams.list"
-
 # StreamRecorder настройки
 DEFAULT_RECORDER_PORT_WEB="9910"
 DEFAULT_RECORDER_PORT_TELEMETRY="9912"
@@ -94,10 +78,8 @@ DEFAULT_RECORDER_PORT_SMTP="1025"
 DEFAULT_RECORDER_IMAGE="yuccastream/yucca:latest"
 DEFAULT_RECORDER_DATA_DIR="$RECORDER_DIR/yucca_data"
 DEFAULT_RECORDER_FFMPEG_DIR="$RECORDER_DIR/yucca_ffmpeg"
-
 # Определяем TUI команду заранее
 TUI_CMD=""
-
 # Увеличенные размеры TUI окон
 TUI_HEIGHT=35
 TUI_WIDTH=85
@@ -105,18 +87,15 @@ MENU_HEIGHT=25
 PROGRESS_HEIGHT=15
 INPUT_HEIGHT=16
 MSG_HEIGHT=30
-
 # Глобальные переменные для управления потоками
 SELECTED_STREAMS=()
 declare -g STREAM_CACHE=""
 declare -gi STREAM_CACHE_TIMESTAMP=0
 CACHE_TIMEOUT=300
-
 # Шаблоны аналитики
 declare -g TEMPLATE_PEOPLE_ANALYTICS TEMPLATE_FACECOVER_ANALYTICS TEMPLATE_WEAPON_ANALYTICS \
            TEMPLATE_FIGHTS_ANALYTICS TEMPLATE_FIRE_ANALYTICS TEMPLATE_BAGS_ANALYTICS \
            TEMPLATE_HANDSUP_ANALYTICS TEMPLATE_LYINGDOWN_ANALYTICS
-
 TEMPLATE_PEOPLE_ANALYTICS='{
   "analytic_name": "people_count",
   "parameters": {
@@ -144,7 +123,6 @@ TEMPLATE_PEOPLE_ANALYTICS='{
     ]
   }
 }'
-
 TEMPLATE_FACECOVER_ANALYTICS='{
   "analytic_name": "facecover_analytics",
   "parameters": {
@@ -182,7 +160,6 @@ TEMPLATE_FACECOVER_ANALYTICS='{
     ]
   }
 }'
-
 TEMPLATE_WEAPON_ANALYTICS='{
   "analytic_name": "weapon_analytics",
   "parameters": {
@@ -219,7 +196,6 @@ TEMPLATE_WEAPON_ANALYTICS='{
     ]
   }
 }'
-
 TEMPLATE_FIGHTS_ANALYTICS='{
   "analytic_name": "fights_analytics",
   "parameters": {
@@ -251,7 +227,6 @@ TEMPLATE_FIGHTS_ANALYTICS='{
     ]
   }
 }'
-
 TEMPLATE_FIRE_ANALYTICS='{
   "analytic_name": "fire_analytics",
   "parameters": {
@@ -283,7 +258,6 @@ TEMPLATE_FIRE_ANALYTICS='{
     ]
   }
 }'
-
 TEMPLATE_BAGS_ANALYTICS='{
   "analytic_name": "bags_analytics",
   "parameters": {
@@ -328,7 +302,6 @@ TEMPLATE_BAGS_ANALYTICS='{
     ]
   }
 }'
-
 TEMPLATE_HANDSUP_ANALYTICS='{
   "analytic_name": "handsup_analytics",
   "parameters": {
@@ -353,7 +326,6 @@ TEMPLATE_HANDSUP_ANALYTICS='{
     ]
   }
 }'
-
 TEMPLATE_LYINGDOWN_ANALYTICS='{
   "analytic_name": "lying_down_analytics",
   "parameters": {
@@ -395,7 +367,6 @@ TEMPLATE_LYINGDOWN_ANALYTICS='{
     ]
   }
 }'
-
 save_config() {
     mkdir -p "$(dirname "$CONFIG_FILE")"
     cat > "$CONFIG_FILE" << EOF
@@ -404,7 +375,6 @@ API_URL="$API_URL"
 HOST_IP="$HOST_IP"
 EOF
 }
-
 save_template_config() {
     mkdir -p "$(dirname "$TEMPLATE_CONFIG_FILE")"
     cat > "$TEMPLATE_CONFIG_FILE" << EOF
@@ -418,7 +388,6 @@ HANDSUP_ANALYTICS_ENABLED="$HANDSUP_ANALYTICS_ENABLED"
 LYINGDOWN_ANALYTICS_ENABLED="$LYINGDOWN_ANALYTICS_ENABLED"
 EOF
 }
-
 save_scanner_config() {
     mkdir -p "$SCANNER_DIR"
     cat > "$SCANNER_CONFIG_FILE" << EOF
@@ -432,7 +401,6 @@ WORKER_COUNT="$WORKER_COUNT"
 SCANNER_USE_GPU="$SCANNER_USE_GPU"
 EOF
 }
-
 save_bags_config() {
     mkdir -p "$BAGS_DIR"
     cat > "$BAGS_CONFIG_FILE" << EOF
@@ -446,7 +414,6 @@ WORKER_COUNT="$WORKER_COUNT"
 BAGS_USE_GPU="$BAGS_USE_GPU"
 EOF
 }
-
 save_analysis_config() {
     mkdir -p "$(dirname "$ANALYSIS_CONFIG_FILE")"
     cat > "$ANALYSIS_CONFIG_FILE" << EOF
@@ -454,7 +421,6 @@ ANALYSIS_TIMEOUT="$ANALYSIS_TIMEOUT"
 DEFAULT_CAMERAS_FILE="$DEFAULT_CAMERAS_FILE"
 EOF
 }
-
 save_logs_config() {
     mkdir -p "$(dirname "$LOGS_CONFIG_FILE")"
     cat > "$LOGS_CONFIG_FILE" << EOF
@@ -463,7 +429,6 @@ DEFAULT_LOG_HOURS="$DEFAULT_LOG_HOURS"
 LOG_RETENTION_DAYS="$LOG_RETENTION_DAYS"
 EOF
 }
-
 init_recorder_config() {
     mkdir -p "$RECORDER_DIR"
     
@@ -472,7 +437,6 @@ init_recorder_config() {
         cat > "$RECORDER_CONFIG_FILE" << EOF
 networks:
   recoder_network:
-
 services:
   recorder:
     image: yuccastream/yucca:latest
@@ -506,22 +470,17 @@ EOF
 [analytics.yandex_metrika]
 counter_id = 0
 webvisor = false
-
 [branding]
 app_logo = "https://docs.visionlabs.ru/logo.png"  # Укажите свой путь
 app_title = "Arena-V1sionLabs"
 site = "http://${HOST_IP}:8080"
-
 [cookie]
 lifetime = "720h"
-
 [security]
 audit_logs = true
 brute_force_login_protection = true
-
 [telemetry]
 path = "/metrics"
-
 [server]
 log_level = "info"
 EOF
@@ -534,7 +493,6 @@ EOF
     
     echo "✅ Конфигурация StreamRecorder инициализирована в $RECORDER_DIR"
 }
-
 start_stream_recorder() {
     echo "🚀 Запуск StreamRecorder..."
     
@@ -592,7 +550,6 @@ start_stream_recorder() {
     popd > /dev/null 2>&1
     return 0
 }
-
 stop_stream_recorder() {
     echo "🛑 Остановка StreamRecorder..."
     
@@ -612,7 +569,6 @@ stop_stream_recorder() {
     popd > /dev/null 2>&1
     return 0
 }
-
 show_stream_recorder_status() {
     local status_info=""
     
@@ -642,7 +598,6 @@ show_stream_recorder_status() {
         show_message "📊 Статус StreamRecorder" "❌ StreamRecorder не запущен.\n\nДля запуска используйте соответствующую команду в меню."
     fi
 }
-
 restart_stream_recorder() {
     echo "🔄 Перезапуск StreamRecorder..."
     
@@ -653,7 +608,6 @@ restart_stream_recorder() {
     
     start_stream_recorder
 }
-
 view_stream_recorder_logs() {
     echo "📋 Просмотр логов StreamRecorder..."
     
@@ -666,7 +620,6 @@ view_stream_recorder_logs() {
         show_message "❌ Ошибка" "StreamRecorder не запущен"
     fi
 }
-
 configure_stream_recorder() {
     while true; do
         local recorder_status="❌ Остановлен"
@@ -770,7 +723,6 @@ configure_stream_recorder() {
         esac
     done
 }
-
 get_network_info() {
     local network_info=""
     local primary_ip
@@ -817,7 +769,6 @@ get_network_info() {
     
     echo -e "$network_info"
 }
-
 get_facestream_version() {
     local fs_paths=(
         "/var/lib/fs/fs-current"
@@ -842,7 +793,6 @@ get_facestream_version() {
     echo "❌ Недоступно"
     return 1
 }
-
 get_agent_releases() {
     echo "📦 Получение релизов агентов аналитики..."
     
@@ -1071,7 +1021,6 @@ get_agent_releases() {
         fi
     fi
 }
-
 show_system_info_splash() {
     clear
     local system_info=""
@@ -1131,7 +1080,6 @@ show_system_info_splash() {
     echo -e "$system_info"
     sleep 2
 }
-
 get_available_gpu_count() {
     if command -v nvidia-smi &> /dev/null; then
         local gpu_count
@@ -1144,7 +1092,6 @@ get_available_gpu_count() {
     echo "0"
     return 1
 }
-
 check_gpu_availability() {
     local gpu_index="$1"
     if command -v nvidia-smi &> /dev/null; then
@@ -1154,7 +1101,6 @@ check_gpu_availability() {
     fi
     return 1
 }
-
 check_docker_image_exists() {
     local image="$1"
     if docker image inspect "$image" &> /dev/null; then
@@ -1163,7 +1109,6 @@ check_docker_image_exists() {
         return 1
     fi
 }
-
 pull_docker_image() {
     local image="$1"
     echo "⬇️  Загрузка Docker образа: $image"
@@ -1194,7 +1139,6 @@ pull_docker_image() {
         fi
     fi
 }
-
 check_gpu_health() {
     local available_gpus
     available_gpus=$(get_available_gpu_count)
@@ -1235,7 +1179,6 @@ check_gpu_health() {
     
     show_message "🎮 Состояние GPU" "$gpu_info"
 }
-
 start_scanner_instances() {
     echo "🚀 Запуск инстансов luna-agent-scanner"
     
@@ -1376,7 +1319,6 @@ $DOCKER_REGISTRY/luna-agent-scanner:$SCANNER_TAG"
     
     return 0
 }
-
 show_scanner_status() {
     local available_gpus
     available_gpus=$(get_available_gpu_count)
@@ -1448,11 +1390,9 @@ show_scanner_status() {
     
     show_message "📊 Статус агента Scanner" "$status_info" 25 90
 }
-
 # ============================================================================
 # ФУНКЦИИ УПРАВЛЕНИЯ ЛОГАМИ SCANNER
 # ============================================================================
-
 collect_scanner_logs() {
     local hours="$1"
     local selected_instances="$2"
@@ -1545,7 +1485,6 @@ collect_scanner_logs() {
         return 1
     fi
 }
-
 collect_scanner_logs_screen() {
     local hours
     hours=$(show_input "📦 СБОР ЛОГОВ SCANNER" "Введите период для сбора логов (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
@@ -1570,7 +1509,6 @@ collect_scanner_logs_screen() {
         show_message "❌ ОТМЕНА" "Сбор логов Scanner отменен"
     fi
 }
-
 view_scanner_logs() {
     echo "📋 Просмотр логов Scanner..."
     
@@ -1608,7 +1546,6 @@ view_scanner_logs() {
         fi
     fi
 }
-
 run_migration() {
     echo "🔄 Запуск миграции базы данных конфигурации"
     
@@ -1628,7 +1565,6 @@ run_migration() {
         return 1
     fi
 }
-
 select_analytics_before_add() {
     echo "📊 Выбор аналитик для применения к видеопотокам..."
     
@@ -1765,12 +1701,9 @@ select_analytics_before_add() {
         return 1
     fi
 }
-
-
 # ============================================================================
 # ОПТИМИЗИРОВАННЫЕ ФУНКЦИИ ГЕНЕРАЦИИ ОТЧЕТОВ
 # ============================================================================
-
 generate_system_report() {
     echo "📊 Генерация системного отчета"
     
@@ -1784,7 +1717,6 @@ generate_system_report() {
         echo "📅 Дата: $(date)"
         echo "👤 Пользователь: $USER"
         echo "--------------------------------------"
-
         echo ""
         echo "=== 🖥️  ОС и ядро ==="
         if command -v lsb_release &> /dev/null; then
@@ -1793,7 +1725,6 @@ generate_system_report() {
             cat /etc/os-release 2>/dev/null || echo "Информация об ОС недоступна"
         fi
         uname -a
-
         echo ""
         echo "=== ⚙️  Аппаратные данные ==="
         echo "CPU:"
@@ -1815,7 +1746,6 @@ generate_system_report() {
         echo ""
         echo "Файловые системы:"
         df -hT 2>/dev/null | grep -v tmpfs || echo "Информация о файловых системах недоступна"
-
         echo ""
         echo "=== 🌐 Сеть ==="
         if command -v ip &> /dev/null; then
@@ -1823,20 +1753,16 @@ generate_system_report() {
         else
             echo "ip команда недоступна"
         fi
-
         echo ""
         echo "=== 📊 Нагрузка и процессы ==="
         echo "⏱️  Uptime: $(uptime -p 2>/dev/null || echo "N/A")"
         echo "📈 Средняя загрузка: $(uptime 2>/dev/null | awk -F'load average:' '{print $2}' || echo "N/A")"
         echo "🔥 Топ-5 по CPU:"
         ps -eo pid,comm,%cpu --sort=-%cpu 2>/dev/null | head -6 || echo "Информация о процессах недоступна"
-
     } > "$report_file"
-
     echo "✅ Системный отчет сохранен: $report_file"
     show_message "📊 Системный отчет" "📋 Отчёт сохранён в: $report_file\n\n📊 Размер: $(du -h "$report_file" 2>/dev/null | cut -f1 || echo "N/A")"
 }
-
 check_dependencies() {
     local missing=()
     
@@ -1847,7 +1773,6 @@ check_dependencies() {
     if ! command -v curl &> /dev/null; then
         missing+=("curl")
     fi
-
     if ! command -v dialog &> /dev/null && ! command -v whiptail &> /dev/null; then
         missing+=("dialog или whiptail")
     fi
@@ -1897,7 +1822,6 @@ check_dependencies() {
         echo ""
         exit 1
     fi
-
     if command -v dialog &> /dev/null; then
         TUI_CMD="dialog"
         echo "✅ Найден интерфейс: dialog"
@@ -1906,7 +1830,6 @@ check_dependencies() {
         echo "✅ Найден интерфейс: whiptail"
     fi
 }
-
 init() {
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$AGENTS_DIR"
@@ -1927,7 +1850,6 @@ init() {
     
     echo "✅ Система Управления Камерами Аналитики инициализирована"
 }
-
 load_configs() {
     if [[ -f "$CONFIG_FILE" ]]; then
         # shellcheck source=/dev/null
@@ -1982,7 +1904,6 @@ load_configs() {
         touch "$HISTORY_FILE"
     fi
 }
-
 create_default_template_config() {
     cat > "$TEMPLATE_CONFIG_FILE" << 'EOF'
 WEAPON_ANALYTICS_ENABLED=true
@@ -1996,7 +1917,6 @@ LYINGDOWN_ANALYTICS_ENABLED=false
 EOF
     echo "✅ Создана конфигурация шаблона по умолчанию"
 }
-
 create_default_bags_config() {
     cat > "$BAGS_CONFIG_FILE" << EOF
 BAGS_TAG="ff1a2aa4"
@@ -2010,7 +1930,6 @@ BAGS_USE_GPU="false"
 EOF
     echo "✅ Создана конфигурация bags по умолчанию"
 }
-
 create_default_logs_config() {
     cat > "$LOGS_CONFIG_FILE" << EOF
 LOGS_DIR="$CONFIG_DIR/logs_archive"
@@ -2019,7 +1938,6 @@ LOG_RETENTION_DAYS=7
 EOF
     echo "✅ Создана конфигурация логов по умолчанию"
 }
-
 create_default_analysis_config() {
     cat > "$ANALYSIS_CONFIG_FILE" << EOF
 ANALYSIS_TIMEOUT="$ANALYSIS_TIMEOUT"
@@ -2027,7 +1945,6 @@ DEFAULT_CAMERAS_FILE="$DEFAULT_CAMERAS_FILE"
 EOF
     echo "✅ Создана конфигурация анализа по умолчанию"
 }
-
 create_default_scanner_config() {
     cat > "$SCANNER_CONFIG_FILE" << EOF
 SCANNER_TAG="737f3a0b"
@@ -2041,7 +1958,6 @@ SCANNER_USE_GPU="true"
 EOF
     echo "✅ Создана конфигурация сканера по умолчанию"
 }
-
 create_default_template() {
     local base_template='{
   "name": "$camera_name",
@@ -2064,7 +1980,6 @@ create_default_template() {
   },
   "analytics": []
 }'
-
     local temp_file
     temp_file=$(mktemp)
     echo "$base_template" > "$temp_file"
@@ -2080,7 +1995,6 @@ create_default_template() {
             echo "❌ Ошибка добавления weapon аналитики в шаблон"
         fi
     fi
-
     if [ "$FIGHTS_ANALYTICS_ENABLED" = "true" ]; then
         if jq --argjson fights_analytic "$TEMPLATE_FIGHTS_ANALYTICS" '.analytics += [$fights_analytic]' "$temp_file" > "${temp_file}.tmp"; then
             mv "${temp_file}.tmp" "$temp_file"
@@ -2088,7 +2002,6 @@ create_default_template() {
             echo "❌ Ошибка добавления fights аналитики в шаблон"
         fi
     fi
-
     if [ "$FIRE_ANALYTICS_ENABLED" = "true" ]; then
         if jq --argjson fire_analytic "$TEMPLATE_FIRE_ANALYTICS" '.analytics += [$fire_analytic]' "$temp_file" > "${temp_file}.tmp"; then
             mv "${temp_file}.tmp" "$temp_file"
@@ -2096,7 +2009,6 @@ create_default_template() {
             echo "❌ Ошибка добавления fire аналитики в шаблон"
         fi
     fi
-
     if [ "$PEOPLE_ANALYTICS_ENABLED" = "true" ]; then
         if jq --argjson people_analytic "$TEMPLATE_PEOPLE_ANALYTICS" '.analytics += [$people_analytic]' "$temp_file" > "${temp_file}.tmp"; then
             mv "${temp_file}.tmp" "$temp_file"
@@ -2104,7 +2016,6 @@ create_default_template() {
             echo "❌ Ошибка добавления people аналитики в шаблон"
         fi
     fi
-
     if [ "$FACECOVER_ANALYTICS_ENABLED" = "true" ]; then
         if jq --argjson facecover_analytic "$TEMPLATE_FACECOVER_ANALYTICS" '.analytics += [$facecover_analytic]' "$temp_file" > "${temp_file}.tmp"; then
             mv "${temp_file}.tmp" "$temp_file"
@@ -2112,7 +2023,6 @@ create_default_template() {
             echo "❌ Ошибка добавления facecover аналитики в шаблон"
         fi
     fi
-
     if [ "$BAGS_ANALYTICS_ENABLED" = "true" ]; then
         if jq --argjson bags_analytic "$TEMPLATE_BAGS_ANALYTICS" '.analytics += [$bags_analytic]' "$temp_file" > "${temp_file}.tmp"; then
             mv "${temp_file}.tmp" "$temp_file"
@@ -2120,7 +2030,6 @@ create_default_template() {
             echo "❌ Ошибка добавления bags аналитики в шаблон"
         fi
     fi
-
     if [ "$HANDSUP_ANALYTICS_ENABLED" = "true" ]; then
         if jq --argjson handsup_analytic "$TEMPLATE_HANDSUP_ANALYTICS" '.analytics += [$handsup_analytic]' "$temp_file" > "${temp_file}.tmp"; then
             mv "${temp_file}.tmp" "$temp_file"
@@ -2128,7 +2037,6 @@ create_default_template() {
             echo "❌ Ошибка добавления handsup аналитики в шаблон"
         fi
     fi
-
     if [ "$LYINGDOWN_ANALYTICS_ENABLED" = "true" ]; then
         if jq --argjson lyingdown_analytic "$TEMPLATE_LYINGDOWN_ANALYTICS" '.analytics += [$lyingdown_analytic]' "$temp_file" > "${temp_file}.tmp"; then
             mv "${temp_file}.tmp" "$temp_file"
@@ -2136,13 +2044,11 @@ create_default_template() {
             echo "❌ Ошибка добавления lyingdown аналитики в шаблон"
         fi
     fi
-
     cp "$temp_file" "$TEMPLATE_FILE"
     rm -f "$temp_file" "${temp_file}.tmp" 2>/dev/null
     
     echo "✅ Создан шаблон по умолчанию"
 }
-
 show_message() {
     local title="$1"
     local message="$2"
@@ -2168,7 +2074,6 @@ show_message() {
         echo -e "$title\n$message"
     fi
 }
-
 show_menu() {
     local title="$1"
     local prompt="$2"
@@ -2215,7 +2120,6 @@ show_menu() {
     fi
     echo "$choice"
 }
-
 show_input() {
     local title="$1"
     local prompt="$2"
@@ -2241,7 +2145,6 @@ show_input() {
     fi
     echo "$input"
 }
-
 show_yesno() {
     local title="$1"
     local message="$2"
@@ -2266,7 +2169,6 @@ show_yesno() {
     fi
     return 1
 }
-
 show_progress() {
     local title="$1"
     local prompt="$2"
@@ -2283,7 +2185,6 @@ show_progress() {
         echo "$percent" | whiptail --title "$title" --gauge "$prompt" $PROGRESS_HEIGHT $TUI_WIDTH 0 2>/dev/null
     fi
 }
-
 show_progress_with_percent() {
     local title="$1"
     local prompt="$2"
@@ -2296,7 +2197,6 @@ show_progress_with_percent() {
     
     show_progress "$title" "$prompt" "$percent"
 }
-
 show_checklist() {
     local title="$1"
     local prompt="$2"
@@ -2331,7 +2231,6 @@ show_checklist() {
     fi
     echo "$choices"
 }
-
 show_radiolist() {
     local title="$1"
     local prompt="$2"
@@ -2372,11 +2271,9 @@ show_radiolist() {
     fi
     echo "$choice"
 }
-
 # ============================================================================
 # ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ПОТОКАМИ
 # ============================================================================
-
 get_streams_list() {
     local force_refresh="$1"
     local response
@@ -2488,7 +2385,6 @@ get_streams_list() {
     printf '%s\n' "${streams[@]}"
     return 0
 }
-
 get_stream_status_display() {
     local status_code="$1"
     case "$status_code" in
@@ -2500,7 +2396,6 @@ get_stream_status_display() {
         *) echo "❓ Неизвестный ($status_code)" ;;
     esac
 }
-
 select_streams_dialog() {
     local title="$1"
     local prompt="$2"
@@ -2583,11 +2478,9 @@ select_streams_dialog() {
         fi
     fi
 }
-
 # ============================================================================
 # ОПТИМИЗИРОВАННЫЕ ФУНКЦИИ API
 # ============================================================================
-
 api_request() {
     local method="$1"
     local endpoint="$2"
@@ -2625,7 +2518,6 @@ api_request() {
             ;;
     esac
 }
-
 get_active_streams_count() {
     local response
     response=$(curl -s --max-time 10 --connect-timeout 5 "http://${HOST_IP}:5230/2/streams/count?statuses=1" 2>/dev/null || echo '{"count": 0}')
@@ -2633,7 +2525,6 @@ get_active_streams_count() {
     count=$(echo "$response" | jq -r '.count // 0' 2>/dev/null || echo "0")
     echo "$count"
 }
-
 get_stream_info() {
     local stream_id="$1"
     local response
@@ -2647,7 +2538,6 @@ get_stream_info() {
         echo ""
     fi
 }
-
 add_stream() {
     local camera_name="$1"
     local camera_url="$2"
@@ -2696,7 +2586,6 @@ add_stream() {
         return 1
     fi
 }
-
 stop_stream() {
     local stream_id="$1"
     
@@ -2715,7 +2604,6 @@ stop_stream() {
         return 1
     fi
 }
-
 resume_stream() {
     local stream_id="$1"
     
@@ -2734,7 +2622,6 @@ resume_stream() {
         return 1
     fi
 }
-
 delete_stream() {
     local stream_id="$1"
     
@@ -2753,7 +2640,6 @@ delete_stream() {
         return 1
     fi
 }
-
 stop_selected_streams() {
     if [[ ${#SELECTED_STREAMS[@]} -eq 0 ]]; then
         show_message "❌ Ошибка" "Не выбраны видеопотоки для остановки"
@@ -2783,7 +2669,6 @@ stop_selected_streams() {
     show_message "📊 Результат" "⏸️  Остановлено видеопотоков: $count из $total"
     echo "✅ Остановлено видеопотоков: $count из $total"
 }
-
 resume_selected_streams() {
     if [[ ${#SELECTED_STREAMS[@]} -eq 0 ]]; then
         show_message "❌ Ошибка" "Не выбраны видеопотоки для возобновления"
@@ -2813,7 +2698,6 @@ resume_selected_streams() {
     show_message "📊 Результат" "▶️  Возобновлено видеопотоков: $count из $total"
     echo "✅ Возобновлено видеопотоков: $count из $total"
 }
-
 delete_selected_streams() {
     if [[ ${#SELECTED_STREAMS[@]} -eq 0 ]]; then
         show_message "❌ Ошибка" "Не выбраны видеопотоки для удаления"
@@ -2848,7 +2732,6 @@ delete_selected_streams() {
     show_message "📊 Результат" "🗑️  Удалено видеопотоков: $count из $total"
     echo "✅ Удалено видеопотоков: $count из $total"
 }
-
 stop_all_streams() {
     echo "📋 Получение списка видеопотоков для остановки..."
     
@@ -2895,7 +2778,6 @@ stop_all_streams() {
     show_message "📊 Результат" "⏸️  Остановлено видеопотоков: $count"
     echo "✅ Остановлено видеопотоков: $count"
 }
-
 resume_all_streams() {
     echo "📋 Получение списка видеопотоков для возобновления..."
     
@@ -2942,7 +2824,6 @@ resume_all_streams() {
     show_message "📊 Результат" "▶️  Возобновлено видеопотоков: $count"
     echo "✅ Возобновлено видеопотоков: $count"
 }
-
 add_streams_from_file() {
     local file_path="$1"
     local success_count=0
@@ -3007,7 +2888,6 @@ add_streams_from_file() {
     
     show_message "📊 Результат" "✅ Добавление завершено:\n✅ Успешно: $success_count\n❌ Ошибок: $fail_count\n📊 Всего: $total_count"
 }
-
 delete_all_streams() {
     if ! show_yesno "⚠️  Подтверждение удаления" "ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ УДАЛИТЬ ВСЕ ВИДЕОПОТОКИ?\n\n⚠️  Это действие нельзя отменить!"; then
         show_message "❌ Отмена" "Удаление отменено"
@@ -3059,7 +2939,6 @@ delete_all_streams() {
     show_message "📊 Результат" "🗑️  Удалено видеопотоков: $count"
     echo "✅ Удалено видеопотоков: $count"
 }
-
 list_streams() {
     local response
     response=$(curl -s --connect-timeout 10 --max-time 30 \
@@ -3098,7 +2977,6 @@ list_streams() {
     
     show_message "🎥 Активные видеопотоки ($count)" "$stream_list" 20 80
 }
-
 show_stream_status() {
     local active_count
     active_count=$(get_active_streams_count)
@@ -3198,7 +3076,6 @@ show_stream_status() {
     local summary="📊 Всего: $total, 🔄 В процессе: $in_progress, ⏸️  Остановлено: $stopped, 🔄 Перезапуск: $restarting, ⏳ Ожидание: $waiting"
     show_message "📊 Статус видеопотоков" "$summary\n\n$table_content" 25 90
 }
-
 stop_scanner_instances() {
     echo "🛑 Остановка всех инстансов luna-agent-scanner"
     
@@ -3251,11 +3128,9 @@ stop_scanner_instances() {
     show_message "📊 Результат" "✅ Остановка завершена:\n\n✅ Успешно остановлено: $stopped_count\n📊 Всего контейнеров: $total_containers"
     echo "✅ Остановлено контейнеров scanner: $stopped_count из $total_containers"
 }
-
 # ============================================================================
 # ОПТИМИЗИРОВАННЫЕ ФУНКЦИИ ЗАХВАТА КАДРОВ
 # ============================================================================
-
 capture_frames() {
     local input_file="$1"
     
@@ -3264,7 +3139,6 @@ capture_frames() {
         show_message "❌ Ошибка" "ffmpeg не установлен. Установите ffmpeg и повторите попытку."
         return 1
     fi
-
     if [[ "$input_file" != */* ]] && [[ "$input_file" != *.* ]]; then
         local config_file_path="$CAMS_LIST_DIR/$input_file"
         if [[ -f "$config_file_path" ]]; then
@@ -3278,49 +3152,37 @@ capture_frames() {
             fi
         fi
     fi
-
     if [[ ! -f "$input_file" ]]; then
         echo "❌ Файл с камерами не найден: $input_file"
         show_message "❌ Ошибка" "Файл с камерами не найден: $input_file"
         return 1
     fi
-
     local file_basename
     file_basename=$(basename "$input_file" | sed 's/\.[^.]*$//')
     local date_dir
     date_dir=$(date +%Y-%m-%d)
     local frames_subdir="$FRAMES_DIR/$file_basename/$date_dir"
-
     mkdir -p "$frames_subdir"
-
     local log_file="$frames_subdir/capture_frames.log"
-
     > "$log_file"
-
     local success_count=0
     local failed_count=0
     local total_count=0
-
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
         ((total_count++))
     done < "$input_file"
-
     if [[ $total_count -eq 0 ]]; then
         show_message "❌ Ошибка" "В файле не найдено валидных записей камер"
         return 1
     fi
-
     local current=0
-
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
             continue
         fi
-
         ((current++))
         local percent=$((current * 100 / total_count))
-
         local camera_name camera_url
         if [[ "$line" =~ [[:space:]] ]]; then
             camera_name=$(echo "$line" | awk '{print $1}')
@@ -3329,23 +3191,19 @@ capture_frames() {
             camera_name="camera_$current"
             camera_url="$line"
         fi
-
         if [[ -z "$camera_name" || -z "$camera_url" ]]; then
             echo "⚠️  Игнорирование некорректной строки: $line" >> "$log_file"
             ((failed_count++))
             continue
         fi
-
         if [[ -n "$TUI_CMD" ]]; then
             show_progress "📸 Получение кадров" "Обработка: $camera_name ($current/$total_count)" "$percent"
         else
             echo "📸 Обработка: $camera_name ($current/$total_count)"
         fi
-
         local safe_camera_name
         safe_camera_name=$(echo "$camera_name" | tr ' ' '_' | tr '/' '-' | tr '\\' '-')
         local output_file="$frames_subdir/${safe_camera_name}.jpg"
-
         if timeout 30 ffmpeg -rtsp_transport tcp -i "$camera_url" -vframes 1 -y "$output_file" -nostdin -loglevel error 2>/dev/null; then
             if [[ -f "$output_file" ]] && [[ -s "$output_file" ]]; then
                 local file_size
@@ -3363,25 +3221,20 @@ capture_frames() {
         fi
         
         sleep 0.3
-
     done < "$input_file"
-
     echo "========================================" >> "$log_file"
     echo "📊 ИТОГОВАЯ СТАТИСТИКА" >> "$log_file"
     echo "✅ Количество успешно полученных кадров: $success_count" >> "$log_file"
     echo "❌ Количество недоступных камер: $failed_count" >> "$log_file"
     echo "📊 Всего обработано камер: $total_count" >> "$log_file"
-
     local result_message="📸 Получение кадров завершено.\n\n✅ Успешно: $success_count\n❌ Ошибок: $failed_count\n📊 Всего: $total_count\n\n📁 Кадры сохранены в: $frames_subdir/\n📋 Лог-файл: $log_file"
     
     show_message "📊 Результат" "$result_message"
     echo "✅ Сохранение кадров завершено: успешно $success_count, ошибок $failed_count"
 }
-
 # ============================================================================
 # УПРОЩЕННАЯ ФУНКЦИЯ АНАЛИЗА КАМЕР
 # ============================================================================
-
 analyze_cameras_simple() {
     local cameras_file="$1"
     local report_file="$2"
@@ -3482,7 +3335,6 @@ analyze_cameras_simple() {
     echo "✅ Онлайн: $online_cameras" >> "$report_file"
     echo "❌ Оффлайн: $((total_cameras - online_cameras))" >> "$report_file"
 }
-
 analyze_cameras_from_file() {
     local cameras_file="$1"
     
@@ -3520,7 +3372,6 @@ analyze_cameras_from_file() {
         view_analysis_report "$report_file"
     fi
 }
-
 view_analysis_report() {
     local report_file="$1"
     
@@ -3531,11 +3382,9 @@ view_analysis_report() {
     
     show_message "📋 Просмотр отчета" "$(cat "$report_file")" 25 90
 }
-
 # ============================================================================
 # УПРОЩЕННАЯ ФУНКЦИЯ ОЧИСТКИ ЛОГОВ
 # ============================================================================
-
 cleanup_old_logs() {
     echo "🗑️  Удаление старых логов"
     
@@ -3570,7 +3419,6 @@ cleanup_old_logs() {
         show_message "ℹ️  Информация" "Логов для удаления не найдено"
     fi
 }
-
 show_logs_stats() {
     mkdir -p "$LOGS_DIR"
     local total_archives oldest_archive newest_archive
@@ -3610,7 +3458,6 @@ show_logs_stats() {
     
     show_message "📊 Статистика логов" "$stats_info"
 }
-
 tail_logs() {
     local lines=${1:-50}
     local log_file="/var/log/syslog"
@@ -3628,7 +3475,6 @@ tail_logs() {
     log_content=$(tail -n "$lines" "$log_file" 2>/dev/null || echo "Не удалось прочитать лог-файл")
     show_message "📋 Последние $lines строк логов" "$log_content" 25 90
 }
-
 clear_stream_manager_logs() {
     if show_yesno "🗑️  Очистка логов" "Очистить системные логи?\n\n📁 Файл: /var/log/syslog"; then
         if [[ -f "/var/log/syslog" ]]; then
@@ -3643,7 +3489,6 @@ clear_stream_manager_logs() {
         fi
     fi
 }
-
 get_luna_platform_version() {
     local version_response
     version_response=$(curl -s --connect-timeout 5 --max-time 10 "http://${HOST_IP}:5000/version" 2>/dev/null)
@@ -3679,7 +3524,6 @@ get_luna_platform_version() {
     echo "❌ Недоступно"
     return 1
 }
-
 get_license_info() {
     local license_response
     license_response=$(curl --silent --location --request GET "http://${HOST_IP}:5120/1/license" --header 'Content-Type: application/json' --data-raw '' 2>/dev/null)
@@ -3695,7 +3539,6 @@ get_license_info() {
     echo "❌ Недоступно"
     return 1
 }
-
 get_cpu_info() {
     local cpu_info=""
     
@@ -3720,7 +3563,6 @@ get_cpu_info() {
     
     echo -e "$cpu_info"
 }
-
 get_gpu_info() {
     local available_gpus
     available_gpus=$(get_available_gpu_count)
@@ -3745,18 +3587,16 @@ get_gpu_info() {
     
     echo -e "$gpu_info"
 }
-
 # ============================================================================
 # РАСШИРЕННАЯ ФУНКЦИЯ ПРОВЕРКИ API
 # ============================================================================
-
 check_api_health() {
     echo "🔍 Проверка состояния API и связанных сервисов..."
     
     local overall_status="✅"
     local detailed_report="📊 ОТЧЕТ О СОСТОЯНИИ СИСТЕМЫ\n\n"
     local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    timestamp=$(date '+%Y-%m-%d %H:%M')
     detailed_report+="⏰ Время проверки: $timestamp\n"
     detailed_report+="═════════════════════════════════\n\n"
     
@@ -3765,7 +3605,7 @@ check_api_health() {
     local api_response
     api_response=$(curl -s --connect-timeout 5 --max-time 10 \
         --header "luna-account-id: $ACCOUNT_ID" \
-        "$API_URL?page_size=1" 2>/dev/null)
+        "$API_URL?page_size=1000" 2>/dev/null)
     
     if [[ $? -eq 0 ]] && [[ -n "$api_response" ]]; then
         if echo "$api_response" | jq empty 2>/dev/null; then
@@ -3825,7 +3665,7 @@ check_api_health() {
         detailed_report+="   📊 Версия: $luna_version\n"
     else
         detailed_report+="   ❌ Статус: НЕДОСТУПЕН\n"
-        detailed_report+="   💡 Проверьте сервис Luna на порту 5000\n"
+        detailed_report+="   💡 Проверьте сервис luna-api на порту 5000\n"
         overall_status="❌"
     fi
     
@@ -3955,7 +3795,6 @@ check_api_health() {
     
     return 0
 }
-
 check_system_health() {
     local health_info=""
     
@@ -4023,7 +3862,6 @@ check_system_health() {
     
     show_message "📊 Состояние системы" "$health_info"
 }
-
 validate_camera_file() {
     local input_file="$1"
     local errors=0
@@ -4098,11 +3936,9 @@ validate_camera_file() {
         return 1
     fi
 }
-
 # ============================================================================
 # ОПТИМИЗИРОВАННЫЕ ФУНКЦИИ УПРАВЛЕНИЯ BAGS АГЕНТОМ
 # ============================================================================
-
 run_bags_migration() {
     echo "🔄 Запуск миграции базы данных конфигурации для Bags"
     
@@ -4122,7 +3958,6 @@ run_bags_migration() {
         return 1
     fi
 }
-
 start_bags_instances() {
     echo "🚀 Запуск инстансов luna-agent-bags"
     
@@ -4286,7 +4121,6 @@ $DOCKER_REGISTRY/luna-agent-bags:$BAGS_TAG"
     
     return 0
 }
-
 show_bags_status() {
     local available_gpus
     available_gpus=$(get_available_gpu_count)
@@ -4375,7 +4209,6 @@ show_bags_status() {
     
     show_message "📊 Статус Bags" "$status_info" 25 90
 }
-
 stop_bags_instances() {
     echo "🛑 Остановка всех инстансов luna-agent-bags"
     
@@ -4386,7 +4219,6 @@ stop_bags_instances() {
         show_message "📊 Результат" "Контейнеры luna-agent-bags не найдены"
         return 0
     fi
-
     local container_array=()
     while IFS= read -r container; do
         if [[ -n "$container" ]]; then
@@ -4427,11 +4259,9 @@ stop_bags_instances() {
     show_message "📊 Результат" "✅ Остановка завершена:\n\n✅ Успешно остановлено: $stopped_count\n📊 Всего контейнеров: $total_containers"
     echo "✅ Остановлено контейнера bags: $stopped_count из $total_containers"
 }
-
 # ============================================================================
 # ФУНКЦИИ УПРАВЛЕНИЯ ЛОГАМИ BAGS
 # ============================================================================
-
 collect_bags_logs() {
     local hours="$1"
     local selected_instances="$2"
@@ -4524,7 +4354,6 @@ collect_bags_logs() {
         return 1
     fi
 }
-
 collect_bags_logs_screen() {
     local hours
     hours=$(show_input "📦 СБОР ЛОГОВ BAGS" "Введите период для сбора логов (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
@@ -4549,7 +4378,6 @@ collect_bags_logs_screen() {
         show_message "❌ ОТМЕНА" "Сбор логов Bags отменен"
     fi
 }
-
 view_bags_logs() {
     echo "📋 Просмотр логов Bags..."
     
@@ -4587,11 +4415,9 @@ view_bags_logs() {
         fi
     fi
 }
-
 # ============================================================================
 # НОВАЯ ФУНКЦИЯ: ОСТАНОВКА И УДАЛЕНИЕ ВСЕХ КОНТЕЙНЕРОВ DOCKER
 # ============================================================================
-
 stop_all_docker_containers() {
     echo "🛑 Остановка и удаление всех контейнеров Docker..."
     
@@ -4657,11 +4483,9 @@ stop_all_docker_containers() {
         return 1
     fi
 }
-
 # ============================================================================
 # ФУНКЦИИ ОСТАНОВКИ ВСЕХ АГЕНТОВ
 # ============================================================================
-
 stop_all_agents() {
     echo "🛑 Остановка и удаление всех агентов Scanner и Bags"
     
@@ -4735,11 +4559,9 @@ stop_all_agents() {
     show_message "📊 Результат остановки" "$result_message"
     echo "✅ Остановка всех агентов завершена: $stopped_count из $total_containers"
 }
-
 # ============================================================================
 # МЕНЮ УПРАВЛЕНИЯ STREAMRECORDER
 # ============================================================================
-
 stream_recorder_menu() {
     while true; do
         local recorder_status="❌ Остановлен"
@@ -4768,11 +4590,9 @@ stream_recorder_menu() {
         esac
     done
 }
-
 # ============================================================================
 # ОСНОВНОЕ МЕНЮ И ПОДМЕНЮ
 # ============================================================================
-
 main_menu() {
     while true; do
         local recorder_status="❌"
@@ -4802,7 +4622,6 @@ main_menu() {
         esac
     done
 }
-
 analytics_agents_management_menu() {
     while true; do
         local choice
@@ -4824,7 +4643,6 @@ analytics_agents_management_menu() {
         esac
     done
 }
-
 show_all_agents_status() {
     local status_info=""
     
@@ -4870,7 +4688,6 @@ show_all_agents_status() {
     
     show_message "📊 Статус всех агентов" "$status_info"
 }
-
 video_streams_management_menu() {
     while true; do
         local choice
@@ -4890,7 +4707,6 @@ video_streams_management_menu() {
         esac
     done
 }
-
 scanner_management_menu() {
     while true; do
         local choice
@@ -4914,7 +4730,6 @@ scanner_management_menu() {
         esac
     done
 }
-
 scanner_logs_menu() {
     while true; do
         local choice
@@ -4936,7 +4751,6 @@ scanner_logs_menu() {
         esac
     done
 }
-
 bags_management_menu() {
     while true; do
         local choice
@@ -4960,7 +4774,6 @@ bags_management_menu() {
         esac
     done
 }
-
 bags_logs_menu() {
     while true; do
         local choice
@@ -4982,7 +4795,6 @@ bags_logs_menu() {
         esac
     done
 }
-
 system_configuration_menu() {
     while true; do
         local choice
@@ -5004,7 +4816,6 @@ system_configuration_menu() {
         esac
     done
 }
-
 diagnostics_monitoring_menu() {
     while true; do
         local choice
@@ -5030,7 +4841,6 @@ diagnostics_monitoring_menu() {
         esac
     done
 }
-
 recording_and_frames_menu() {
     while true; do
         local choice
@@ -5046,7 +4856,6 @@ recording_and_frames_menu() {
         esac
     done
 }
-
 add_streams_menu() {
     while true; do
         local choice
@@ -5064,7 +4873,6 @@ add_streams_menu() {
         esac
     done
 }
-
 preview_template_screen() {
     if [[ -f "$TEMPLATE_FILE" ]]; then
         local template_content
@@ -5074,7 +4882,6 @@ preview_template_screen() {
         show_message "❌ ОШИБКА" "Шаблонный файл не найден"
     fi
 }
-
 add_cameras_file_screen() {
     local file_path
     file_path=$(show_input "➕ ДОБАВЛЕНИЕ КАМЕР" "Введите путь к файлу с камерами:" "$DEFAULT_CAMERAS_FILE")
@@ -5115,7 +4922,6 @@ add_cameras_file_screen() {
         show_message "❌ ОШИБКА" "Файл не указан"
     fi
 }
-
 add_single_camera_screen() {
     local camera_name
     camera_name=$(show_input "➕ ДОБАВЛЕНИЕ КАМЕРЫ" "Введите имя камеры:" "")
@@ -5166,7 +4972,6 @@ add_single_camera_screen() {
         fi
     fi
 }
-
 selected_streams_management_menu() {
     while true; do
         local choice
@@ -5188,7 +4993,6 @@ selected_streams_management_menu() {
         esac
     done
 }
-
 stream_operations_menu() {
     while true; do
         local choice
@@ -5206,7 +5010,6 @@ stream_operations_menu() {
         esac
     done
 }
-
 stream_analysis_menu() {
     while true; do
         local choice
@@ -5228,7 +5031,6 @@ stream_analysis_menu() {
         esac
     done
 }
-
 validate_camera_file_screen() {
     local input_file
     input_file=$(show_input "🔍 ПРОВЕРКА ФОРМАТА ФАЙЛА" "Введите путь к файлу с камерами:" "$DEFAULT_CAMERAS_FILE")
@@ -5241,7 +5043,6 @@ validate_camera_file_screen() {
         show_message "❌ ОШИБКА" "Файл не указан"
     fi
 }
-
 view_reports_screen() {
     while true; do
         local choice
@@ -5259,7 +5060,6 @@ view_reports_screen() {
         esac
     done
 }
-
 select_report_screen() {
     local reports
     reports=($(find "$REPORT_DIR" -name "camera_report_*.txt" -type f 2>/dev/null | sort -r))
@@ -5284,7 +5084,6 @@ select_report_screen() {
         view_analysis_report "$selected_report"
     fi
 }
-
 system_monitoring_menu() {
     while true; do
         local choice
@@ -5300,7 +5099,6 @@ system_monitoring_menu() {
         esac
     done
 }
-
 capture_frames_screen() {
     local input_file
     input_file=$(show_input "📸 ПОЛУЧЕНИЕ КАДРОВ" "Введите путь к файлу с камерами:" "$DEFAULT_CAMS_LIST")
@@ -5315,7 +5113,6 @@ capture_frames_screen() {
         show_message "❌ ОШИБКА" "Файл не указан"
     fi
 }
-
 capture_single_frame_screen() {
     local camera_name
     camera_name=$(show_input "📸 ПОЛУЧЕНИЕ СНИМКА" "Введите имя камеры:" "")
@@ -5333,7 +5130,6 @@ capture_single_frame_screen() {
     
     rm -f "$temp_file"
 }
-
 select_streams_screen() {
     if select_streams_dialog "📋 ВЫБОР ВИДЕОПОТОКОВ" "Выберите видеопотоки для операций:" "multi"; then
         show_message "✅ ВЫБОР ЗАВЕРШЕН" "✅ Выбрано видеопотоков: ${#SELECTED_STREAMS[@]}\n\n📋 Идентификаторы:\n${SELECTED_STREAMS[*]}"
@@ -5341,7 +5137,6 @@ select_streams_screen() {
         show_message "❌ ОТМЕНА" "Выбор видеопотоков отменен"
     fi
 }
-
 stop_selected_streams_screen() {
     if [[ ${#SELECTED_STREAMS[@]} -eq 0 ]]; then
         show_message "❌ ОШИБКА" "Сначала выберите видеопотоки через меню '📋 Выбрать видеопотоки'"
@@ -5354,7 +5149,6 @@ stop_selected_streams_screen() {
         show_message "❌ ОТМЕНА" "Остановка отменена"
     fi
 }
-
 resume_selected_streams_screen() {
     if [[ ${#SELECTED_STREAMS[@]} -eq 0 ]]; then
         show_message "❌ Ошибка" "Сначала выберите видеопотоки через меню '📋 Выбрать видеопотоки'"
@@ -5367,7 +5161,6 @@ resume_selected_streams_screen() {
         show_message "❌ ОТМЕНА" "Возобновление отменена"
     fi
 }
-
 delete_selected_streams_screen() {
     if [[ ${#SELECTED_STREAMS[@]} -eq 0 ]]; then
         show_message "❌ ОШИБКА" "Сначала выберите видеопотоки через меню '📋 Выбрать видеопотоки'"
@@ -5376,7 +5169,6 @@ delete_selected_streams_screen() {
     
     delete_selected_streams
 }
-
 show_selected_streams() {
     if [[ ${#SELECTED_STREAMS[@]} -eq 0 ]]; then
         show_message "ℹ️  ИНФОРМАЦИЯ" "Нет выбранных видеопотоков"
@@ -5391,7 +5183,6 @@ show_selected_streams() {
     
     show_message "🎥 ВЫБРАННЫЕ ВИДЕОПОТОКИ" "$stream_info"
 }
-
 stop_all_streams_screen() {
     if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ ОСТАНОВКИ" "ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ ОСТАНОВИТЬ ВСЕ ВИДЕОПОТОКИ?\n\n⏸️  Это приостановит обработку видео."; then
         stop_all_streams
@@ -5399,7 +5190,6 @@ stop_all_streams_screen() {
         show_message "❌ Отмена" "Остановка отменена"
     fi
 }
-
 resume_all_streams_screen() {
     if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ ВОЗОБНОВЛЕНИЯ" "ВЫ УВЕРЕНЫ, ЧТО ХОТИТЕ ВОЗОБНОВИТЬ ВСЕ ВИДЕОПОТОКИ?\n\n▶️  Это возобновит обработку видео."; then
         resume_all_streams
@@ -5407,15 +5197,12 @@ resume_all_streams_screen() {
         show_message "❌ Отмена" "Возобновление отменена"
     fi
 }
-
 delete_all_streams_screen() {
     delete_all_streams
 }
-
 status_screen() {
     show_stream_status
 }
-
 scanner_configuration_screen() {
     while true; do
         local gpu_status="❌ Отключено"
@@ -5496,7 +5283,6 @@ scanner_configuration_screen() {
         esac
     done
 }
-
 bags_configuration_screen() {
     while true; do
         local gpu_status="❌ Отключено"
@@ -5577,7 +5363,6 @@ bags_configuration_screen() {
         esac
     done
 }
-
 analyze_cameras_simple_screen() {
     local cameras_file
     cameras_file=$(show_input "🔍 БЫСТРАЯ ДИАГНОСТИКА" "Введите путь к файлу с камерами:" "$DEFAULT_CAMERAS_FILE")
@@ -5592,7 +5377,6 @@ analyze_cameras_simple_screen() {
         show_message "❌ ОШИБКА" "Файл не указан"
     fi
 }
-
 analyze_single_camera_screen() {
     local camera_url
     camera_url=$(show_input "🎥 ДИАГНОСТИКА ОДНОЙ КАМЕРЫ" "Введите URL камеры:" "")
@@ -5606,7 +5390,6 @@ analyze_single_camera_screen() {
     
     rm -f "$temp_file"
 }
-
 view_latest_report() {
     local latest_report
     latest_report=$(find "$REPORT_DIR" -name "camera_report_*.txt" -type f 2>/dev/null | sort -r | head -1)
@@ -5617,7 +5400,6 @@ view_latest_report() {
         show_message "ℹ️  Информация" "Отчеты не найдены"
     fi
 }
-
 view_all_reports() {
     local reports
     reports=($(find "$REPORT_DIR" -name "camera_report_*.txt" -type f 2>/dev/null | sort -r))
@@ -5638,7 +5420,6 @@ view_all_reports() {
     
     show_message "📋 ВСЕ ОТЧЕТЫ ДИАГНОСТИКИ" "$report_list" 25 90
 }
-
 analysis_configuration_screen() {
     while true; do
         local choice
@@ -5681,7 +5462,6 @@ analysis_configuration_screen() {
         esac
     done
 }
-
 logs_configuration_screen() {
     while true; do
         local choice
@@ -5735,7 +5515,6 @@ logs_configuration_screen() {
         esac
     done
 }
-
 system_settings_screen() {
     while true; do
         local choice
@@ -5787,7 +5566,6 @@ system_settings_screen() {
         esac
     done
 }
-
 template_management_screen() {
     while true; do
         local analytics_status=""
@@ -5856,7 +5634,6 @@ template_management_screen() {
         esac
     done
 }
-
 show_config_files() {
     local config_files=""
     
@@ -5896,21 +5673,16 @@ show_config_files() {
         show_message "📂 ФАЙЛЫ КОНФИГУРАЦИИ" "$config_files" 30 90
     fi
 }
-
 exit_screen() {
     if show_yesno "🚪 ВЫХОД" "Вы уверены, что хотите выйти из системы?"; then
         exit 0
     fi
 }
-
 # Проверяем зависимости
 check_dependencies
-
 # Инициализируем систему
 init
-
 # Показываем информационный экран
 show_system_info_splash
-
 # Запускаем главное меню
 main_menu
