@@ -1613,9 +1613,9 @@ select_analytics_before_add() {
     fi
     
     if [[ "$current_bags" == "true" ]]; then
-        analytics_options+=("bags" "🎒 Обнаружение сумок (ВКЛЮЧЕНО)" "ON")
+        analytics_options+=("bags" "🎒 Оставленные предметы (ВКЛЮЧЕНО)" "ON")
     else
-        analytics_options+=("bags" "🎒 Обнаружение сумок" "OFF")
+        analytics_options+=("bags" "🎒 Оставленные предметы" "OFF")
     fi
     
     if [[ "$current_handsup" == "true" ]]; then
@@ -1674,7 +1674,7 @@ select_analytics_before_add() {
         [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🔥 Обнаружение огня\n"
         [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 😷 Обнаружение балаклав\n"
         [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 👥 Подсчет людей\n"
-        [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🎒 Обнаружение сумок\n"
+        [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🎒 Оставленные предметы\n"
         [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🙌 Обнаружение рук вверх\n"
         [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && selected_list+="• 🛌 Обнаружение лежащих людей\n"
         
@@ -1705,7 +1705,7 @@ select_analytics_before_add() {
 # ОПТИМИЗИРОВАННЫЕ ФУНКЦИИ ГЕНЕРАЦИИ ОТЧЕТОВ
 # ============================================================================
 generate_system_report() {
-    echo "📊 Генерация системного отчета"
+    echo "📊 Формирование системного отчета"
     
     mkdir -p "$REPORT_DIR"
     local report_file="$REPORT_DIR/sysreport_$(hostname)_$(date +%F_%H-%M).txt"
@@ -4909,7 +4909,7 @@ add_cameras_file_screen() {
             [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🔥 Обнаружение огня\n"
             [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 😷 Обнаружение балаклав\n"
             [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 👥 Подсчет людей\n"
-            [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🎒 Обнаружение сумок\n"
+            [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🎒 Оставленные предметы\n"
             [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🙌 Обнаружение рук вверх\n"
             [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && confirmation_message+="• 🛌 Обнаружение лежащих людей\n"
             confirmation_message+="➕ Продолжить добавление?"
