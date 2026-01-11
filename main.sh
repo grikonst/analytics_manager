@@ -1754,12 +1754,18 @@ generate_system_report() {
             echo "ip команда недоступна"
         fi
         echo ""
-        echo "=== 📊 Нагрузка и процессы ==="
-        echo "⏱️  Uptime: $(uptime -p 2>/dev/null || echo "N/A")"
+        echo "=== 📊 Нагрузка, процессы и сервисы ==="
+        echo "⏱️ Uptime: $(uptime -p 2>/dev/null || echo "N/A")"
         echo "📈 Средняя загрузка: $(uptime 2>/dev/null | awk -F'load average:' '{print $2}' || echo "N/A")"
+        echo "📈 Проблемные сервисы ОС:" 
+        systemctl list-units --failed 2>/dev/null
         echo "🔥 Топ-5 по CPU:"
         ps -eo pid,comm,%cpu --sort=-%cpu 2>/dev/null | head -6 || echo "Информация о процессах недоступна"
     } > "$report_file"
+
+
+echo "=== Recent Errors ==="
+sudo journalctl -p err --since "1 hour ago"
     echo "✅ Системный отчет сохранен: $report_file"
     show_message "📊 Системный отчет" "📋 Отчёт сохранён в: $report_file\n\n📊 Размер: $(du -h "$report_file" 2>/dev/null | cut -f1 || echo "N/A")"
 }
