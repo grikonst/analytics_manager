@@ -3612,7 +3612,7 @@ check_api_health() {
             local stream_count
             stream_count=$(echo "$api_response" | jq -r '.streams? | length' 2>/dev/null || echo "0")
             detailed_report+="   ✅ Статус: ДОСТУПЕН\n"
-            detailed_report+="   📊 Активных потоков: $stream_count\n"
+#            detailed_report+="   📊 Активных потоков: $stream_count\n"
         else
             detailed_report+="   ⚠️  Статус: ДОСТУПЕН (но невалидный JSON)\n"
             overall_status="⚠️"
@@ -3633,9 +3633,9 @@ check_api_health() {
     
     if [[ $? -eq 0 ]]; then
         local active_count
-        active_count=$(echo "$count_response" | jq -r '.count // 0' 2>/dev/null || echo "0")
+#        active_count=$(echo "$count_response" | jq -r '.streams? | length' 2>/dev/null || echo "0")
         detailed_report+="   ✅ Статус: ДОСТУПЕН\n"
-        detailed_report+="   📊 Активных потоков: $active_count\n"
+        detailed_report+="   📊 Активных потоков: $stream_count\n"
     else
         detailed_report+="   ⚠️  Статус: ОГРАНИЧЕННЫЙ ДОСТУП\n"
         overall_status="⚠️"
