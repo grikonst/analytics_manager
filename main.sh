@@ -630,11 +630,11 @@ configure_stream_recorder() {
         local choice
         choice=$(show_menu "⚙️  КОНФИГУРАЦИЯ STREAMRECORDER" "Настройка параметров StreamRecorder\n\n📊 Статус: $recorder_status\n\n🔧 Порты • 📁 Директории • ⚙️ Конфигурация" \
             "1" "🔌 Изменить порт веб-интерфейса (сейчас: $DEFAULT_RECORDER_PORT_WEB)" \
-#            "2" "📡 Изменить порт телеметрии (сейчас: $DEFAULT_RECORDER_PORT_TELEMETRY)" \
-#            "3" "📨 Изменить порт SMTP (сейчас: $DEFAULT_RECORDER_PORT_SMTP)" \
+            "2" "📡 Изменить порт телеметрии (сейчас: $DEFAULT_RECORDER_PORT_TELEMETRY)" \
+            "3" "📨 Изменить порт SMTP (сейчас: $DEFAULT_RECORDER_PORT_SMTP)" \
             "4" "🐳 Изменить Docker образ (сейчас: $DEFAULT_RECORDER_IMAGE)" \
             "5" "📁 Изменить директорию данных (сейчас: $DEFAULT_RECORDER_DATA_DIR)" \
-#            "6" "📝 Редактировать конфигурацию yucca.toml" \
+            "6" "📝 Редактировать конфигурацию yucca.toml" \
             "7" "👁️ Просмотр текущей конфигурации" \
             "8" "🔄 Сбросить конфигурацию" \
             "0" "🔙 Назад")
@@ -1630,11 +1630,20 @@ select_analytics_before_add() {
         analytics_options+=("lyingdown" "🛌 Обнаружение лежащих людей" "OFF")
     fi
     
+    # Добавляем опцию "Назад"
+    analytics_options+=("back" "🔙 Назад" "OFF")
+    
     # Показываем меню выбора
     local selected_analytics
-    selected_analytics=$(show_checklist "📊 ВЫБОР АНАЛИТИК" "Выберите аналитики для применения к новым видеопотокам:" "${analytics_options[@]}")
+    selected_analytics=$(show_checklist "📊 ВЫБОР АНАЛИТИК" "Выберите аналитики для применения к новым видеопотокам (для возврата выберите 'Назад'):" "${analytics_options[@]}")
     
     if [[ -n "$selected_analytics" ]]; then
+        # Проверяем, не выбрана ли опция "Назад"
+        if echo "$selected_analytics" | grep -q "back"; then
+            show_message "❌ ОТМЕНА" "Выбор аналитик отменен. Используются текущие настройки."
+            return 1
+        fi
+        
         # Сбрасываем все аналитики
         WEAPON_ANALYTICS_ENABLED="false"
         FIGHTS_ANALYTICS_ENABLED="false"
@@ -1761,11 +1770,11 @@ generate_system_report() {
         systemctl list-units --failed 2>/dev/null
         echo "🔥 Топ-5 по CPU:"
         ps -eo pid,comm,%cpu --sort=-%cpu 2>/dev/null | head -6 || echo "Информация о процессах недоступна"
+        echo ""
+        echo "=== Recent Errors ==="
+        sudo journalctl -p err --since "1 hour ago" 2>/dev/null || echo "Не удалось получить журнал ошибок"
     } > "$report_file"
 
-
-echo "=== Recent Errors ==="
-sudo journalctl -p err --since "1 hour ago"
     echo "✅ Системный отчет сохранен: $report_file"
     show_message "📊 Системный отчет" "📋 Отчёт сохранён в: $report_file\n\n📊 Размер: $(du -h "$report_file" 2>/dev/null | cut -f1 || echo "N/A")"
 }
@@ -3618,7 +3627,7 @@ check_api_health() {
             local stream_count
             stream_count=$(echo "$api_response" | jq -r '.streams? | length' 2>/dev/null || echo "0")
             detailed_report+="   ✅ Статус: ДОСТУПЕН\n"
-#            detailed_report+="   📊 Активных потоков: $stream_count\n"
+            detailed_report+="   📊 Активных потоков: $stream_count\n"
         else
             detailed_report+="   ⚠️  Статус: ДОСТУПЕН (но невалидный JSON)\n"
             overall_status="⚠️"
@@ -3639,9 +3648,9 @@ check_api_health() {
     
     if [[ $? -eq 0 ]]; then
         local active_count
-#        active_count=$(echo "$count_response" | jq -r '.streams? | length' 2>/dev/null || echo "0")
+        active_count=$(echo "$count_response" | jq -r '.count // 0' 2>/dev/null || echo "0")
         detailed_report+="   ✅ Статус: ДОСТУПЕН\n"
-        detailed_report+="   📊 Активных потоков: $stream_count\n"
+        detailed_report+="   📊 Активных потоков: $active_count\n"
     else
         detailed_report+="   ⚠️  Статус: ОГРАНИЧЕННЫЙ ДОСТУП\n"
         overall_status="⚠️"
@@ -4610,7 +4619,7 @@ main_menu() {
         choice=$(show_menu "🎥 СИСТЕМА УПРАВЛЕНИЯ КАМЕРАМИ АНАЛИТИКИ v5.5.6" "Универсальная система управления видеопотоками и аналитикой\n\n📊 Мониторинг • ⚙️  Конфигурация • 🔍 Диагностика • 📦 Релизы\n\n📹 StreamRecorder: $recorder_status" \
             "1" "🔍 Управление агентами аналитики" \
             "2" "🎥 Управление видеопотоками" \
-            "3" "📹 Запуск записи потоков StreamRecorder" \
+            "3" "📹 Управление StreamRecorder" \
             "4" "⚙️ Конфигурация системы" \
             "5" "🔍 Диагностика и мониторинг" \
             "6" "🛑 Остановка и удаление всех Docker контейнеров" \
@@ -4722,7 +4731,7 @@ scanner_management_menu() {
             "3" "📊 Статус инстансов" \
             "4" "⚙️  Конфигурация Scanner" \
             "5" "📦 Управление логами Scanner" \
-#            "6" "🔄 Принудительная миграция БД" \
+            "6" "🔄 Принудительная миграция БД" \
             "0" "🔙 Назад")
         
         case "$choice" in
@@ -4742,9 +4751,9 @@ scanner_logs_menu() {
         choice=$(show_menu "📦 УПРАВЛЕНИЕ ЛОГАМИ SCANNER" "Управление логами агента Scanner\n\n📦 Сбор • 📋 Просмотр • 🗑️  Очистка" \
             "1" "📦 Сбор логов Scanner" \
             "2" "📋 Просмотр логов Scanner" \
-#            "3" "🗑️  Очистка старых логов" \
-#            "4" "📊 Статистика логов" \
-#            "5" "⚙️  Настройки логов" \
+            "3" "🗑️  Очистка старых логов" \
+            "4" "📊 Статистика логов" \
+            "5" "⚙️  Настройки логов" \
             "0" "🔙 Назад")
         
         case "$choice" in
@@ -4766,7 +4775,7 @@ bags_management_menu() {
             "3" "📊 Статус инстансов" \
             "4" "⚙️ Конфигурация агента Bags" \
             "5" "📦 Управление логами Bags" \
-#            "6" "🔄 Принудительная миграция БД" \
+            "6" "🔄 Принудительная миграция БД" \
             "0" "🔙 Назад")
         
         case "$choice" in
@@ -4786,9 +4795,9 @@ bags_logs_menu() {
         choice=$(show_menu "📦 УПРАВЛЕНИЕ ЛОГАМИ BAGS" "Управление логами агента Bags\n\n📦 Сбор • 📋 Просмотр • 🗑️  Очистка" \
             "1" "📦 Сбор логов Bags" \
             "2" "📋 Просмотр логов Bags" \
-#            "3" "🗑️ Очистка старых логов" \
-#            "4" "📊 Статистика логов" \
-#            "5" "⚙️ Настройки логов" \
+            "3" "🗑️ Очистка старых логов" \
+            "4" "📊 Статистика логов" \
+            "5" "⚙️ Настройки логов" \
             "0" "🔙 Назад")
         
         case "$choice" in
@@ -5022,7 +5031,7 @@ stream_analysis_menu() {
         choice=$(show_menu "🔍 ДИАГНОСТИКА ВИДЕОПОТОКОВ" "Получить технические параметры видеопотоков\n\n⚡ Быстрая проверка • ⚙️  Настройки • 📋 Выбор отчета" \
             "1" "⚡ Быстрая проверка видеопотоков из файла" \
             "2" "🎥 Быстрая проверка одного видеопотока" \
-#            "3" "🔍 Проверить формат файла камер" \
+            "3" "🔍 Проверить формат файла камер" \
             "4" "📋 Просмотр отчетов диагностики" \
             "5" "⚙️ Настройки диагностики" \
             "0" "🔙 Назад")
@@ -5369,38 +5378,11 @@ bags_configuration_screen() {
         esac
     done
 }
-analyze_cameras_simple_screen() {
-    local cameras_file
-    cameras_file=$(show_input "🔍 БЫСТРАЯ ДИАГНОСТИКА" "Введите путь к файлу с камерами:" "$DEFAULT_CAMERAS_FILE")
-    
-    if [[ -n "$cameras_file" ]]; then
-        local preview
-        preview=$(head -10 "$cameras_file" 2>/dev/null || echo "Не удалось прочитать файл")
-        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "📁 Файл: $cameras_file\n\n📄 Первые 10 строк:\n$preview\n\n🔍 Продолжить диагностику?"; then
-            analyze_cameras_from_file "$cameras_file"
-        fi
-    else
-        show_message "❌ ОШИБКА" "Файл не указан"
-    fi
-}
-analyze_single_camera_screen() {
-    local camera_url
-    camera_url=$(show_input "🎥 ДИАГНОСТИКА ОДНОЙ КАМЕРЫ" "Введите URL камеры:" "")
-    [[ -z "$camera_url" ]] && return
-    
-    local temp_file
-    temp_file=$(mktemp)
-    echo "single_camera $camera_url" > "$temp_file"
-    
-    analyze_cameras_from_file "$temp_file"
-    
-    rm -f "$temp_file"
-}
 view_latest_report() {
     local latest_report
     latest_report=$(find "$REPORT_DIR" -name "camera_report_*.txt" -type f 2>/dev/null | sort -r | head -1)
     
-    if [[ -n "$latest_report" ]]; then
+    if [[ -f "$latest_report" ]]; then
         view_analysis_report "$latest_report"
     else
         show_message "ℹ️  Информация" "Отчеты не найдены"
@@ -5415,22 +5397,55 @@ view_all_reports() {
         return
     fi
     
-    local report_list="📋 НАЙДЕННЫЕ ОТЧЕТЫ:\n\n"
+    local report_list="📋 СПИСОК ОТЧЕТОВ:\n\n"
     for report in "${reports[@]}"; do
         local report_name report_date report_size
         report_name=$(basename "$report")
         report_date=$(stat -c %y "$report" 2>/dev/null | cut -d' ' -f1,2 || echo "N/A")
         report_size=$(du -h "$report" 2>/dev/null | cut -f1 || echo "N/A")
-        report_list+="📄 $report_name\n📅 $report_date\n📊 $report_size\n────────────────────────────────\n"
+        report_list+="📄 $report_name\n"
+        report_list+="   📅 Дата: $report_date\n"
+        report_list+="   📊 Размер: $report_size\n\n"
     done
     
-    show_message "📋 ВСЕ ОТЧЕТЫ ДИАГНОСТИКИ" "$report_list" 25 90
+    show_message "📋 Всего отчетов: ${#reports[@]}" "$report_list"
+}
+analyze_cameras_simple_screen() {
+    local input_file
+    input_file=$(show_input "🔍 ДИАГНОСТИКА КАМЕР" "Введите путь к файлу с камерами:" "$DEFAULT_CAMERAS_FILE")
+    
+    if [[ -n "$input_file" ]]; then
+        local preview
+        preview=$(head -10 "$input_file" 2>/dev/null || echo "Не удалось прочитать файл")
+        if show_yesno "⚠️  ПОДТВЕРЖДЕНИЕ" "📁 Файл: $input_file\n\n📄 Первые 10 строк:\n$preview\n\n🔍 Продолжить диагностику?"; then
+            analyze_cameras_from_file "$input_file"
+        fi
+    else
+        show_message "❌ ОШИБКА" "Файл не указан"
+    fi
+}
+analyze_single_camera_screen() {
+    local camera_name
+    camera_name=$(show_input "🔍 ДИАГНОСТИКА КАМЕРЫ" "Введите имя камеры:" "")
+    [[ -z "$camera_name" ]] && return
+    
+    local camera_url
+    camera_url=$(show_input "🔍 ДИАГНОСТИКА КАМЕРЫ" "Введите URL камеры:" "")
+    [[ -z "$camera_url" ]] && return
+    
+    local temp_file
+    temp_file=$(mktemp)
+    echo "$camera_name $camera_url" > "$temp_file"
+    
+    analyze_cameras_from_file "$temp_file"
+    
+    rm -f "$temp_file"
 }
 analysis_configuration_screen() {
     while true; do
         local choice
-        choice=$(show_menu "⚙️  НАСТРОЙКИ ДИАГНОСТИКИ" "Текущие настройки диагностики:\n⏱️  Таймаут: ${ANALYSIS_TIMEOUT} сек\n📁 Файл по умолчанию: $DEFAULT_CAMERAS_FILE" \
-            "1" "⏱️  Изменить таймаут диагностики" \
+        choice=$(show_menu "⚙️  НАСТРОЙКИ ДИАГНОСТИКИ" "Текущие настройки:\n⏱️  Таймаут: $ANALYSIS_TIMEOUT секунд\n📁 Файл по умолчанию: $DEFAULT_CAMERAS_FILE" \
+            "1" "⏱️  Изменить таймаут анализа" \
             "2" "📁 Изменить файл по умолчанию" \
             "3" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
@@ -5438,20 +5453,20 @@ analysis_configuration_screen() {
         case "$choice" in
             "1")
                 local new_timeout
-                new_timeout=$(show_input "⏱️  ТАЙМАУТ ДИАГНОСТИКИ" "Введите таймаут в секундах:" "$ANALYSIS_TIMEOUT")
+                new_timeout=$(show_input "⏱️  ТАЙМАУТ АНАЛИЗА" "Введите новый таймаут (секунды):" "$ANALYSIS_TIMEOUT")
                 if [[ -n "$new_timeout" ]] && [[ "$new_timeout" =~ ^[0-9]+$ ]]; then
                     ANALYSIS_TIMEOUT="$new_timeout"
                     save_analysis_config
-                    show_message "✅ УСПЕХ" "⏱️  Таймаут обновлен: ${ANALYSIS_TIMEOUT} сек"
+                    show_message "✅ УСПЕХ" "⏱️  Таймаут анализа обновлен: $ANALYSIS_TIMEOUT секунд"
                 else
                     show_message "❌ ОШИБКА" "Введите корректное число"
                 fi
                 ;;
             "2")
-                local new_cameras_file
-                new_cameras_file=$(show_input "📁 ФАЙЛ КАМЕР ПО УМОЛЧАНИЮ" "Введите путь к файлу:" "$DEFAULT_CAMERAS_FILE")
-                if [[ -n "$new_cameras_file" ]]; then
-                    DEFAULT_CAMERAS_FILE="$new_cameras_file"
+                local new_file
+                new_file=$(show_input "📁 ФАЙЛ ПО УМОЛЧАНИЮ" "Введите путь к файлу по умолчанию:" "$DEFAULT_CAMERAS_FILE")
+                if [[ -n "$new_file" ]]; then
+                    DEFAULT_CAMERAS_FILE="$new_file"
                     save_analysis_config
                     show_message "✅ УСПЕХ" "📁 Файл по умолчанию обновлен: $DEFAULT_CAMERAS_FILE"
                 fi
@@ -5471,42 +5486,42 @@ analysis_configuration_screen() {
 logs_configuration_screen() {
     while true; do
         local choice
-        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n⏰ Период сбора: $DEFAULT_LOG_HOURS\n🗑️  Хранение: $LOG_RETENTION_DAYS дней\n📁 Директория: $LOGS_DIR" \
-            "1" "⏰ Изменить период сбора логов" \
-            "2" "🗑️  Изменить период хранения логов" \
-            "3" "📁 Изменить директорию логов" \
+        choice=$(show_menu "⚙️  НАСТРОЙКИ ЛОГОВ" "Текущие настройки:\n📁 Директория: $LOGS_DIR\n⏱️  Период сбора: $DEFAULT_LOG_HOURS\n📅 Хранение: $LOG_RETENTION_DAYS дней" \
+            "1" "📁 Изменить директорию логов" \
+            "2" "⏱️  Изменить период сбора" \
+            "3" "📅 Изменить период хранения" \
             "4" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1")
-                local new_hours
-                new_hours=$(show_input "⏰ ПЕРИОД СБОРА ЛОГОВ" "Введите период (например: 6h, 1d, 24h):" "$DEFAULT_LOG_HOURS")
-                if [[ -n "$new_hours" ]]; then
-                    DEFAULT_LOG_HOURS="$new_hours"
-                    save_logs_config
-                    show_message "✅ УСПЕХ" "⏰ Период сбора обновлен: $DEFAULT_LOG_HOURS"
-                fi
-                ;;
-            "2")
-                local new_days
-                new_days=$(show_input "🗑️  ПЕРИОД ХРАНЕНИЯ ЛОГОВ" "Введите количество дней хранения:" "$LOG_RETENTION_DAYS")
-                if [[ -n "$new_days" ]] && [[ "$new_days" =~ ^[0-9]+$ ]]; then
-                    LOG_RETENTION_DAYS="$new_days"
-                    save_logs_config
-                    show_message "✅ УСПЕХ" "🗑️  Период хранения обновлен: $LOG_RETENTION_DAYS дней"
-                else
-                    show_message "❌ ОШИБКА" "Введите корректное число"
-                fi
-                ;;
-            "3")
-                local new_logs_dir
-                new_logs_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите путь к директории:" "$LOGS_DIR")
-                if [[ -n "$new_logs_dir" ]]; then
-                    LOGS_DIR="$new_logs_dir"
+                local new_dir
+                new_dir=$(show_input "📁 ДИРЕКТОРИЯ ЛОГОВ" "Введите новую директорию:" "$LOGS_DIR")
+                if [[ -n "$new_dir" ]]; then
+                    LOGS_DIR="$new_dir"
                     mkdir -p "$LOGS_DIR"
                     save_logs_config
                     show_message "✅ УСПЕХ" "📁 Директория логов обновлена: $LOGS_DIR"
+                fi
+                ;;
+            "2")
+                local new_hours
+                new_hours=$(show_input "⏱️  ПЕРИОД СБОРА" "Введите период сбора (например: 6h, 1d):" "$DEFAULT_LOG_HOURS")
+                if [[ -n "$new_hours" ]]; then
+                    DEFAULT_LOG_HOURS="$new_hours"
+                    save_logs_config
+                    show_message "✅ УСПЕХ" "⏱️  Период сбора обновлен: $DEFAULT_LOG_HOURS"
+                fi
+                ;;
+            "3")
+                local new_days
+                new_days=$(show_input "📅 ПЕРИОД ХРАНЕНИЯ" "Введите период хранения (дней):" "$LOG_RETENTION_DAYS")
+                if [[ -n "$new_days" ]] && [[ "$new_days" =~ ^[0-9]+$ ]]; then
+                    LOG_RETENTION_DAYS="$new_days"
+                    save_logs_config
+                    show_message "✅ УСПЕХ" "📅 Период хранения обновлен: $LOG_RETENTION_DAYS дней"
+                else
+                    show_message "❌ ОШИБКА" "Введите корректное число"
                 fi
                 ;;
             "4")
@@ -5521,49 +5536,131 @@ logs_configuration_screen() {
         esac
     done
 }
+show_config_files() {
+    local config_files_info="📁 СПИСОК ФАЙЛОВ КОНФИГУРАЦИИ:\n\n"
+    
+    local config_files=(
+        "$CONFIG_FILE" "⚙️  Основные настройки"
+        "$TEMPLATE_CONFIG_FILE" "📋 Шаблон аналитики"
+        "$SCANNER_CONFIG_FILE" "🔍 Конфигурация Scanner"
+        "$BAGS_CONFIG_FILE" "🎒 Конфигурация Bags"
+        "$ANALYSIS_CONFIG_FILE" "🔍 Конфигурация анализа"
+        "$LOGS_CONFIG_FILE" "📦 Конфигурация логов"
+        "$RECORDER_CONFIG_FILE" "📹 Конфигурация StreamRecorder"
+        "$YUCCA_CONFIG_FILE" "⚙️  Конфигурация Yucca"
+        "$TEMPLATE_FILE" "📄 Шаблон JSON"
+        "$HISTORY_FILE" "📋 История камер"
+    )
+    
+    local files_found=0
+    
+    for ((i=0; i<${#config_files[@]}; i+=2)); do
+        local file_path="${config_files[i]}"
+        local file_desc="${config_files[i+1]}"
+        
+        if [[ -f "$file_path" ]]; then
+            local file_size
+            file_size=$(du -h "$file_path" 2>/dev/null | cut -f1 || echo "N/A")
+            config_files_info+="✅ $file_desc:\n"
+            config_files_info+="   📁 Путь: $file_path\n"
+            config_files_info+="   📊 Размер: $file_size\n\n"
+            ((files_found++))
+        else
+            config_files_info+="❌ $file_desc:\n"
+            config_files_info+="   ⚠️  Файл не найден\n\n"
+        fi
+    done
+    
+    config_files_info+="📊 Всего файлов: $files_found найдено, $(( ${#config_files[@]} / 2 - files_found )) отсутствует"
+    
+    show_message "📁 Файлы конфигурации" "$config_files_info" 25 90
+}
+show_system_info() {
+    local system_info=""
+    
+    system_info+="🖥️  ИНФОРМАЦИЯ О СИСТЕМЕ\n\n"
+    
+    # CPU информация
+    system_info+="$(get_cpu_info)\n"
+    
+    # GPU информация
+    system_info+="$(get_gpu_info)\n"
+    
+    # Сетевая информация
+    system_info+="📡 СЕТЕВЫЕ НАСТРОЙКИ:\n"
+    system_info+="• 🌐 Host IP: $HOST_IP\n"
+    system_info+="• 🔗 API URL: $API_URL\n"
+    system_info+="• 👤 Account ID: $ACCOUNT_ID\n\n"
+    
+    # Версия Luna Platform
+    local luna_version
+    luna_version=$(get_luna_platform_version)
+    system_info+="🚀 LUNA PLATFORM:\n"
+    system_info+="• 📊 Версия: $luna_version\n\n"
+    
+    # Информация о лицензии
+    local license_info
+    license_info=$(get_license_info)
+    system_info+="📄 ЛИЦЕНЗИЯ:\n"
+    system_info+="• 📊 Потоков: $license_info\n\n"
+    
+    # Дисковая информация
+    system_info+="💿 ДИСКОВОЕ ПРОСТРАНСТВО:\n"
+    local disk_info
+    disk_info=$(df -h / 2>/dev/null | awk 'NR==2 {print "Использовано: " $5 ", Доступно: " $4}')
+    system_info+="• $disk_info\n\n"
+    
+    # Информация о памяти
+    system_info+="💾 ИНФОРМАЦИЯ О ПАМЯТИ:\n"
+    local mem_info
+    mem_info=$(free -h 2>/dev/null | awk 'NR==2 {print "Всего: " $2 ", Использовано: " $3 ", Свободно: " $4}')
+    system_info+="• $mem_info\n"
+    
+    show_message "🖥️  Техническая информация СВТ" "$system_info"
+}
 system_settings_screen() {
     while true; do
         local choice
-        choice=$(show_menu "⚙️  ОСНОВНЫЕ НАСТРОЙКИ" "Текущие настройки системы:\n👤 Account ID: $ACCOUNT_ID\n🌐 API URL: $API_URL\n📡 Host IP: $HOST_IP" \
-            "1" "👤 Изменить Account ID" \
-            "2" "🌐 Изменить API URL" \
-            "3" "📡 Изменить Host IP" \
+        choice=$(show_menu "⚙️  ОСНОВНЫЕ НАСТРОЙКИ" "Текущие настройки:\n🌐 Host IP: $HOST_IP\n🔗 API URL: $API_URL\n👤 Account ID: $ACCOUNT_ID" \
+            "1" "🌐 Изменить Host IP" \
+            "2" "🔗 Изменить API URL" \
+            "3" "👤 Изменить Account ID" \
             "4" "🔄 Сбросить настройки" \
             "0" "🔙 Назад")
         
         case "$choice" in
             "1")
+                local new_ip
+                new_ip=$(show_input "🌐 HOST IP" "Введите новый Host IP:" "$HOST_IP")
+                if [[ -n "$new_ip" ]]; then
+                    HOST_IP="$new_ip"
+                    save_config
+                    show_message "✅ УСПЕХ" "🌐 Host IP обновлен: $HOST_IP"
+                fi
+                ;;
+            "2")
+                local new_url
+                new_url=$(show_input "🔗 API URL" "Введите новый API URL:" "$API_URL")
+                if [[ -n "$new_url" ]]; then
+                    API_URL="$new_url"
+                    save_config
+                    show_message "✅ УСПЕХ" "🔗 API URL обновлен: $API_URL"
+                fi
+                ;;
+            "3")
                 local new_account_id
-                new_account_id=$(show_input "👤 ACCOUNT ID" "Введите Account ID:" "$ACCOUNT_ID")
+                new_account_id=$(show_input "👤 ACCOUNT ID" "Введите новый Account ID:" "$ACCOUNT_ID")
                 if [[ -n "$new_account_id" ]]; then
                     ACCOUNT_ID="$new_account_id"
                     save_config
                     show_message "✅ УСПЕХ" "👤 Account ID обновлен: $ACCOUNT_ID"
                 fi
                 ;;
-            "2")
-                local new_api_url
-                new_api_url=$(show_input "🌐 API URL" "Введите URL API:" "$API_URL")
-                if [[ -n "$new_api_url" ]]; then
-                    API_URL="$new_api_url"
-                    save_config
-                    show_message "✅ УСПЕХ" "🌐 API URL обновлен: $API_URL"
-                fi
-                ;;
-            "3")
-                local new_host_ip
-                new_host_ip=$(show_input "📡 HOST IP" "Введите IP адрес хоста:" "$HOST_IP")
-                if [[ -n "$new_host_ip" ]]; then
-                    HOST_IP="$new_host_ip"
-                    save_config
-                    show_message "✅ УСПЕХ" "📡 Host IP обновлен: $HOST_IP"
-                fi
-                ;;
             "4")
                 if show_yesno "🔄 СБРОС НАСТРОЕК" "Сбросить основные настройки к значениям по умолчанию?"; then
-                    ACCOUNT_ID="$DEFAULT_ACCOUNT_ID"
-                    API_URL="$DEFAULT_API_URL"
                     HOST_IP="$DEFAULT_HOST_IP"
+                    API_URL="$DEFAULT_API_URL"
+                    ACCOUNT_ID="$DEFAULT_ACCOUNT_ID"
                     save_config
                     show_message "✅ УСПЕХ" "Основные настройки сброшены к значениям по умолчанию"
                 fi
@@ -5578,8 +5675,8 @@ template_management_screen() {
         [[ "$WEAPON_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🔫 "
         [[ "$FIGHTS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🥊 "
         [[ "$FIRE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🔥 "
-        [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="👥 "
         [[ "$FACECOVER_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="😷 "
+        [[ "$PEOPLE_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="👥 "
         [[ "$BAGS_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🎒 "
         [[ "$HANDSUP_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🙌 "
         [[ "$LYINGDOWN_ANALYTICS_ENABLED" == "true" ]] && analytics_status+="🛌 "
@@ -5589,9 +5686,9 @@ template_management_screen() {
         fi
         
         local choice
-        choice=$(show_menu "📋 УПРАВЛЕНИЕ ШАБЛОНОМ АНАЛИТИКИ" "Управление шаблоном конфигурации аналитик\n\n📊 Активные аналитики: $analytics_status\n📁 Файл шаблона: $TEMPLATE_FILE" \
-            "1" "📊 Выбрать аналитики для шаблона" \
-            "2" "👁️  Просмотр текущего шаблона" \
+        choice=$(show_menu "📋 ШАБЛОН КОНФИГУРАЦИИ АНАЛИТИКИ" "Активные аналитики:\n$analytics_status" \
+            "1" "⚙️  Настроить аналитики" \
+            "2" "👁️  Просмотр шаблона" \
             "3" "✏️  Редактировать шаблон вручную" \
             "4" "🔄 Обновить шаблон с выбранными аналитиками" \
             "5" "🔄 Сбросить шаблон к умолчанию" \
