@@ -305,24 +305,34 @@ TEMPLATE_BAGS_ANALYTICS='{
 TEMPLATE_HANDSUP_ANALYTICS='{
   "analytic_name": "handsup_analytics",
   "parameters": {
-    "targets": [
-      "overview",
-      "handsup"
-    ],
     "parameters": {
-      "image_retain_policy": {
-        "mimetype": "PNG",
-        "quality": 0.5,
-        "max_size": 1270
-      },
-      "rate": {"period": 0.25, "unit": "second"},
       "handsup_threshold": 0.7,
-      "time_filter": {"type": "median", "length": 1}
+      "image_retain_policy": {
+        "max_size": 5680
+      },
+      "time_filter": {
+        "type": "min",
+        "length": 1
+      },
+      "event_policy": {
+        "trigger": "start"
+      },
+      "rate": {
+        "unit": "second",
+        "period": 0.25
+      }
     },
     "callbacks": [
       {
         "type": "luna-ws-notification"
+      },
+      {
+        "type": "luna-event"
       }
+    ],
+    "targets": [
+      "handsup",
+      "overview"
     ]
   }
 }'
