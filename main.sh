@@ -164,10 +164,12 @@ TEMPLATE_WEAPON_ANALYTICS='{
   "analytic_name": "weapon_analytics",
   "parameters": {
     "parameters": {
-      "weapon_threshold": 0.75,
-      "min_body_detection_size": 200,
-      "timeout_interval": 100,
+      "weapon_threshold": 0.95,
+      "min_body_detection_size": 100,
+      "timeout_interval": 50,
       "image_retain_policy": {
+		"mimetype": "JPEG",
+        "quality": 1,
         "max_size": 5640
       },
       "event_policy": {
@@ -1944,9 +1946,9 @@ EOF
 }
 create_default_bags_config() {
     cat > "$BAGS_CONFIG_FILE" << EOF
-BAGS_TAG="ff1a2aa4"
-BAGS_INSTANCES=2
-DOCKER_REGISTRY="test-server.vlabs:5000"
+BAGS_TAG="v.1.3.5"
+BAGS_INSTANCES=1
+DOCKER_REGISTRY="dockerhub.visionlabs.ru/luna"
 CONFIGURATOR_HOST="${HOST_IP}"
 CONFIGURATOR_PORT="5070"
 BAGS_PORT_START="5950"
@@ -1972,9 +1974,9 @@ EOF
 }
 create_default_scanner_config() {
     cat > "$SCANNER_CONFIG_FILE" << EOF
-SCANNER_TAG="737f3a0b"
-SCANNER_INSTANCES=8
-DOCKER_REGISTRY="test-server.vlabs:5000"
+SCANNER_TAG="v.1.3.5"
+SCANNER_INSTANCES=2
+DOCKER_REGISTRY="dockerhub.visionlabs.ru/luna"
 CONFIGURATOR_HOST="${HOST_IP}"
 CONFIGURATOR_PORT="5070"
 SCANNER_PORT_START="5850"
